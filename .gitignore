@@ -1,0 +1,38 @@
+# Editor and local tool state
+.vscode*
+.code*
+.idea*
+*.swp
+*.swo
+*~
+
+# Environment files
+.env*
+.envrc
+
+# Kubernetes and ArgoCD local files
+.argocd/
+argocd.yaml
+k.yaml
+kubeconfig
+kubeconfig.yaml
+vcluster
+
+# TLS and secrets
+*.crt
+*.key
+*.pem
+
+# Binaries, generated local tools, and test output
+bin/
+dist/*
+!dist/install.yaml
+
+# Go
+*.test
+*.out
+coverage.*
+cover.out
+go.work
+go.work.sum
+vendor/

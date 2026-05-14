@@ -1,0 +1,41 @@
+# Copyright 2026, Versioneer (https://versioneer.at)
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSRepository
+metadata:
+  labels:
+    app.kubernetes.io/name: lakefs-oss-contrib
+    app.kubernetes.io/managed-by: kustomize
+  name: repo-a
+spec:
+  endpoint: http://lakefs.lakefs.svc:8000
+  storageNamespace: s3://e2e-bucket/repo-a
+  credentialsSecretRef:
+    name: admin-credentials
+---
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSRepository
+metadata:
+  labels:
+    app.kubernetes.io/name: lakefs-oss-contrib
+    app.kubernetes.io/managed-by: kustomize
+  name: repo-b
+spec:
+  endpoint: http://lakefs.lakefs.svc:8000
+  storageNamespace: s3://e2e-bucket/repo-b
+  credentialsSecretRef:
+    name: admin-credentials
+---
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSRepository
+metadata:
+  labels:
+    app.kubernetes.io/name: lakefs-oss-contrib
+    app.kubernetes.io/managed-by: kustomize
+  name: repo-c
+spec:
+  endpoint: http://lakefs.lakefs.svc:8000
+  storageNamespace: s3://e2e-bucket/repo-c
+  credentialsSecretRef:
+    name: admin-credentials

@@ -1,0 +1,10 @@
+# Copyright 2026, Versioneer (https://versioneer.at)
+# SPDX-License-Identifier: Apache-2.0
+
+FROM gcr.io/distroless/static:nonroot
+ARG BINARY
+WORKDIR /
+COPY ${BINARY} /app
+USER 65532:65532
+
+ENTRYPOINT ["/app"]

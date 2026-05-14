@@ -1,0 +1,59 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - pkg.internal
+  resources:
+  - lakefscredentials
+  - lakefsgroups
+  - lakefsrepositories
+  - lakefsrolebindings
+  - lakefsroles
+  - lakefsusers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - pkg.internal
+  resources:
+  - lakefscredentials/finalizers
+  - lakefsgroups/finalizers
+  - lakefsrepositories/finalizers
+  - lakefsrolebindings/finalizers
+  - lakefsroles/finalizers
+  - lakefsusers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - pkg.internal
+  resources:
+  - lakefscredentials/status
+  - lakefsgroups/status
+  - lakefsrepositories/status
+  - lakefsrolebindings/status
+  - lakefsroles/status
+  - lakefsusers/status
+  verbs:
+  - get
+  - patch
+  - update

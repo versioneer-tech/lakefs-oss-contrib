@@ -1,0 +1,35 @@
+# Copyright 2026, Versioneer (https://versioneer.at)
+# SPDX-License-Identifier: Apache-2.0
+
+site_name: lakefs-oss-contrib
+site_url: https://versioneer-tech.github.io/lakefs-oss-contrib/
+repo_url: https://github.com/versioneer-tech/lakefs-oss-contrib
+repo_name: versioneer-tech/lakefs-oss-contrib
+copyright: "Copyright &copy; 2026, Versioneer"
+nav:
+  - Home: index.md
+  - How-to guides:
+    - Usage & Concepts: how-to-guides/usage_concepts.md
+    - Installation: how-to-guides/installation.md
+    - Local E2E: how-to-guides/local_e2e.md
+  - Reference guides:
+    - API: reference-guides/api.md
+plugins:
+  - search
+  - mike
+markdown_extensions:
+  - admonition
+theme:
+  name: material
+  language: en
+  features:
+    - content.code.copy
+    - search.suggest
+    - toc.follow
+    - toc.permalink
+  palette:
+    - scheme: default
+      primary: white
+extra:
+  version:
+    provider: mike

@@ -1,0 +1,14 @@
+# Copyright 2026, Versioneer (https://versioneer.at)
+# SPDX-License-Identifier: Apache-2.0
+
+## Append samples of your project ##
+resources:
+- pkg_v1beta1_lakefsuser.yaml
+- pkg_v1beta1_lakefsgroup.yaml
+- pkg_v1beta1_lakefscredential.yaml
+- pkg_v1beta1_lakefsrole_admin.yaml
+- pkg_v1beta1_lakefsrole_owner.yaml
+- pkg_v1beta1_lakefsrole_viewer.yaml
+- pkg_v1beta1_lakefsrolebinding.yaml
+- pkg_v1beta1_lakefsrepository.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

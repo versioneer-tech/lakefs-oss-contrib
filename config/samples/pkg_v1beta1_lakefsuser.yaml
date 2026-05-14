@@ -1,0 +1,35 @@
+# Copyright 2026, Versioneer (https://versioneer.at)
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSUser
+metadata:
+  labels:
+    app.kubernetes.io/name: lakefs-oss-contrib
+    app.kubernetes.io/managed-by: kustomize
+  name: admin-user
+spec:
+  externalId: admin-user
+  friendlyName: E2E Admin
+---
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSUser
+metadata:
+  labels:
+    app.kubernetes.io/name: lakefs-oss-contrib
+    app.kubernetes.io/managed-by: kustomize
+  name: user
+spec:
+  externalId: user
+  friendlyName: E2E User
+---
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSUser
+metadata:
+  labels:
+    app.kubernetes.io/name: lakefs-oss-contrib
+    app.kubernetes.io/managed-by: kustomize
+  name: readonly-user
+spec:
+  externalId: readonly-user
+  friendlyName: E2E Readonly User

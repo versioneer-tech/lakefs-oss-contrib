@@ -1,0 +1,17 @@
+# Copyright 2026, Versioneer (https://versioneer.at)
+# SPDX-License-Identifier: Apache-2.0
+
+default_stages: [pre-commit]
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_language_version:
+  python: python3
+
+repos:
+  - repo: local
+    hooks:
+      - id: copyright-header
+        name: Copyright header
+        entry: ./scripts/copyright.py
+        language: system
+        types_or: [go, yaml]
+        exclude: ^(config/crd/bases/|config/rbac/role\.yaml|config/webhook/manifests\.yaml)

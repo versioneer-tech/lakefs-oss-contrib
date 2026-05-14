@@ -1,0 +1,62 @@
+# Copyright 2026, Versioneer (https://versioneer.at)
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: lakefs-oss-contrib
+    app.kubernetes.io/managed-by: kustomize
+  name: admin-user-all
+spec:
+  subject:
+    kind: LakeFSUser
+    name: admin-user
+  roleRef:
+    name: admin
+  repository: "*"
+---
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: lakefs-oss-contrib
+    app.kubernetes.io/managed-by: kustomize
+  name: user-repo-a-owner
+spec:
+  subject:
+    kind: LakeFSUser
+    name: user
+  roleRef:
+    name: owner
+  repository: repo-a
+---
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: lakefs-oss-contrib
+    app.kubernetes.io/managed-by: kustomize
+  name: readonly-user-repo-b-viewer
+spec:
+  subject:
+    kind: LakeFSUser
+    name: readonly-user
+  roleRef:
+    name: viewer
+  repository: repo-b
+---
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: lakefs-oss-contrib
+    app.kubernetes.io/managed-by: kustomize
+  name: group-c-repo-c-owner
+spec:
+  subject:
+    kind: LakeFSGroup
+    name: group-c
+  roleRef:
+    name: owner
+  repository: repo-c
