@@ -6,51 +6,47 @@ The stack consists of lakeFS, the `lakefs-oss-contrib` operator, and the `lakefs
 
 - Kubernetes cluster
 - `kubectl`
-- Flux when consuming the packaged OCI base
+- `kustomize` or `kubectl kustomize`
+- `oras`, `jq`, and `tar` to extract the packaged OCI base
+- `envsubst` to substitute installation values after rendering
 - Object storage reachable by lakeFS
 - Two images:
-  - `ghcr.io/versioneer-tech/lakefs-oss-contrib:latest`
-  - `ghcr.io/versioneer-tech/lakefs-auth-server:latest`
+  - `ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:latest`
+  - `ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:latest`
 
 ## Packaged Base
 
 For installation, use the reusable Kustomize base published from `versioneer-tech/bases`. The `lakefs-oss-contrib` base installs lakeFS, the auth server, and the operator together in the `lakefs` namespace.
 
-```yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: lakefs-oss-contrib
-  namespace: flux-system
-spec:
-  interval: 5m
-  url: oci://ghcr.io/versioneer-tech/bases
-  ref:
-    tag: lakefs-oss-contrib-<sha12>
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: lakefs-oss-contrib
-  namespace: flux-system
-spec:
-  interval: 10m
-  prune: true
-  wait: true
-  timeout: 10m
-  sourceRef:
-    kind: OCIRepository
-    name: lakefs-oss-contrib
-  path: ./default
-  postBuild:
-    substitute:
-      LAKEFS_BLOCKSTORE_ACCESS_KEY_ID: <object-storage-access-key>
-      LAKEFS_BLOCKSTORE_SECRET_ACCESS_KEY: <object-storage-secret-key>
-      LAKEFS_BLOCKSTORE_REGION: <object-storage-region>
-      LAKEFS_BLOCKSTORE_ENDPOINT: <object-storage-endpoint>
-      LAKEFS_INSTALLATION_USER_NAME: admin-user
-      LAKEFS_INSTALLATION_ACCESS_KEY_ID: lakefs_ak_admin
-      LAKEFS_INSTALLATION_SECRET_ACCESS_KEY: <lakefs-admin-secret-key>
+Kustomize consumes a local directory or a Git URL, so first extract the OCI artifact to a filesystem path and then run Kustomize against the unpacked base.
+
+```bash
+export LAKEFS_OSS_CONTRIB_BASE_REPOSITORY=ghcr.io/versioneer-tech/bases
+export LAKEFS_OSS_CONTRIB_BASE_TAG=lakefs-oss-contrib-<version>
+export LAKEFS_OSS_CONTRIB_BASE_REF="${LAKEFS_OSS_CONTRIB_BASE_REPOSITORY}:${LAKEFS_OSS_CONTRIB_BASE_TAG}"
+
+mkdir -p vendor/lakefs-oss-contrib
+oras manifest fetch "${LAKEFS_OSS_CONTRIB_BASE_REF}" \
+  | jq -r '.layers[0].digest' \
+  | xargs -I{} oras blob fetch "${LAKEFS_OSS_CONTRIB_BASE_REPOSITORY}@{}" \
+      --output /tmp/lakefs-oss-contrib-base.tar.gz
+tar -xzf /tmp/lakefs-oss-contrib-base.tar.gz -C vendor/lakefs-oss-contrib
+```
+
+Set the installation values expected by the base, then render and apply it:
+
+```bash
+export LAKEFS_BLOCKSTORE_ACCESS_KEY_ID=<object-storage-access-key>
+export LAKEFS_BLOCKSTORE_SECRET_ACCESS_KEY=<object-storage-secret-key>
+export LAKEFS_BLOCKSTORE_REGION=<object-storage-region>
+export LAKEFS_BLOCKSTORE_ENDPOINT=<object-storage-endpoint>
+export LAKEFS_INSTALLATION_USER_NAME=admin-user
+export LAKEFS_INSTALLATION_ACCESS_KEY_ID=lakefs_ak_admin
+export LAKEFS_INSTALLATION_SECRET_ACCESS_KEY=<lakefs-admin-secret-key>
+
+kustomize build vendor/lakefs-oss-contrib/default \
+  | envsubst \
+  | kubectl apply -f -
 ```
 
 The packaged base creates:
@@ -97,6 +93,6 @@ For local development of the operator and auth server only, generate and apply t
 
 ```bash
 make deploy \
-  IMG=ghcr.io/versioneer-tech/lakefs-oss-contrib:latest \
-  AUTHSERVER_IMG=ghcr.io/versioneer-tech/lakefs-auth-server:latest
+  IMG=ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:latest \
+  AUTHSERVER_IMG=ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:latest
 ```

@@ -40,8 +40,8 @@ cmd/authserver/main.go
 And two images:
 
 ```text
-ghcr.io/versioneer-tech/lakefs-oss-contrib
-ghcr.io/versioneer-tech/lakefs-auth-server
+ghcr.io/versioneer-tech/lakefs-oss-contrib-operator
+ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server
 ```
 
 The normal flow is:
@@ -111,8 +111,8 @@ Build both images:
 
 ```bash
 make docker-build \
-  IMG=localhost:5001/lakefs-oss-contrib:dev \
-  AUTHSERVER_IMG=localhost:5001/lakefs-auth-server:dev
+  IMG=localhost:5001/lakefs-oss-contrib-operator:dev \
+  AUTHSERVER_IMG=localhost:5001/lakefs-oss-contrib-auth-server:dev
 ```
 
 For local end-to-end work, use a dedicated Kind cluster and a local registry. The e2e script does this for you:
@@ -126,8 +126,8 @@ By default this uses:
 ```text
 Kind cluster: lakefs-oss-contrib-e2e
 Registry: localhost:5001
-Operator image: localhost:5001/lakefs-oss-contrib:e2e
-Auth server image: localhost:5001/lakefs-auth-server:e2e
+Operator image: localhost:5001/lakefs-oss-contrib-operator:e2e
+Auth server image: localhost:5001/lakefs-oss-contrib-auth-server:e2e
 ```
 
 To keep the cluster after a run:

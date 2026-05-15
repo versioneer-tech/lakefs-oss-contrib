@@ -27,8 +27,8 @@ The intended contract is simple: Kubernetes resources and Secrets are the source
 The repository builds two binaries and images:
 
 ```text
-ghcr.io/versioneer-tech/lakefs-oss-contrib
-ghcr.io/versioneer-tech/lakefs-auth-server
+ghcr.io/versioneer-tech/lakefs-oss-contrib-operator
+ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server
 ```
 
 The operator reconciles desired lakeFS state from custom resources. The auth server is stateless and can run with multiple replicas; lakeFS calls it for users, credentials, groups, policies, and permissions.

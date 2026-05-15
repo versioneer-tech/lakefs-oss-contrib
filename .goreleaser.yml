@@ -54,13 +54,13 @@ dockers:
     goos: linux
     goarch: amd64
     image_templates:
-      - "ghcr.io/versioneer-tech/lakefs-oss-contrib:{{ .Tag }}-amd64"
+      - "ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:{{ .Tag }}-amd64"
     build_flag_templates:
       - "--pull"
       - "--platform=linux/amd64"
       - "--build-arg=BINARY=lakefs-oss-contrib"
       - "--label=org.opencontainers.image.created={{ .Date }}"
-      - "--label=org.opencontainers.image.name={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.name=lakefs-oss-contrib-operator"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.source={{ .GitURL }}"
@@ -73,13 +73,13 @@ dockers:
     goos: linux
     goarch: arm64
     image_templates:
-      - "ghcr.io/versioneer-tech/lakefs-oss-contrib:{{ .Tag }}-arm64"
+      - "ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:{{ .Tag }}-arm64"
     build_flag_templates:
       - "--pull"
       - "--platform=linux/arm64"
       - "--build-arg=BINARY=lakefs-oss-contrib"
       - "--label=org.opencontainers.image.created={{ .Date }}"
-      - "--label=org.opencontainers.image.name=lakefs-oss-contrib"
+      - "--label=org.opencontainers.image.name=lakefs-oss-contrib-operator"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.source={{ .GitURL }}"
@@ -92,13 +92,13 @@ dockers:
     goos: linux
     goarch: amd64
     image_templates:
-      - "ghcr.io/versioneer-tech/lakefs-auth-server:{{ .Tag }}-amd64"
+      - "ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:{{ .Tag }}-amd64"
     build_flag_templates:
       - "--pull"
       - "--platform=linux/amd64"
       - "--build-arg=BINARY=lakefs-auth-server"
       - "--label=org.opencontainers.image.created={{ .Date }}"
-      - "--label=org.opencontainers.image.name=lakefs-auth-server"
+      - "--label=org.opencontainers.image.name=lakefs-oss-contrib-auth-server"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.source={{ .GitURL }}"
@@ -111,34 +111,34 @@ dockers:
     goos: linux
     goarch: arm64
     image_templates:
-      - "ghcr.io/versioneer-tech/lakefs-auth-server:{{ .Tag }}-arm64"
+      - "ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:{{ .Tag }}-arm64"
     build_flag_templates:
       - "--pull"
       - "--platform=linux/arm64"
       - "--build-arg=BINARY=lakefs-auth-server"
       - "--label=org.opencontainers.image.created={{ .Date }}"
-      - "--label=org.opencontainers.image.name=lakefs-auth-server"
+      - "--label=org.opencontainers.image.name=lakefs-oss-contrib-auth-server"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.source={{ .GitURL }}"
 
 docker_manifests:
-  - name_template: "ghcr.io/versioneer-tech/lakefs-oss-contrib:{{ .Tag }}"
+  - name_template: "ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:{{ .Tag }}"
     image_templates:
-      - "ghcr.io/versioneer-tech/lakefs-oss-contrib:{{ .Tag }}-amd64"
-      - "ghcr.io/versioneer-tech/lakefs-oss-contrib:{{ .Tag }}-arm64"
+      - "ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:{{ .Tag }}-amd64"
+      - "ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:{{ .Tag }}-arm64"
 
-  - name_template: "ghcr.io/versioneer-tech/lakefs-oss-contrib:latest"
+  - name_template: "ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:latest"
     image_templates:
-      - "ghcr.io/versioneer-tech/lakefs-oss-contrib:{{ .Tag }}-amd64"
-      - "ghcr.io/versioneer-tech/lakefs-oss-contrib:{{ .Tag }}-arm64"
+      - "ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:{{ .Tag }}-amd64"
+      - "ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:{{ .Tag }}-arm64"
 
-  - name_template: "ghcr.io/versioneer-tech/lakefs-auth-server:{{ .Tag }}"
+  - name_template: "ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:{{ .Tag }}"
     image_templates:
-      - "ghcr.io/versioneer-tech/lakefs-auth-server:{{ .Tag }}-amd64"
-      - "ghcr.io/versioneer-tech/lakefs-auth-server:{{ .Tag }}-arm64"
+      - "ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:{{ .Tag }}-amd64"
+      - "ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:{{ .Tag }}-arm64"
 
-  - name_template: "ghcr.io/versioneer-tech/lakefs-auth-server:latest"
+  - name_template: "ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:latest"
     image_templates:
-      - "ghcr.io/versioneer-tech/lakefs-auth-server:{{ .Tag }}-amd64"
-      - "ghcr.io/versioneer-tech/lakefs-auth-server:{{ .Tag }}-arm64"
+      - "ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:{{ .Tag }}-amd64"
+      - "ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:{{ .Tag }}-arm64"

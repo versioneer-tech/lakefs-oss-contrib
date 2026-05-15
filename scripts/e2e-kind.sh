@@ -11,8 +11,8 @@ KIND_CONTEXT="kind-${KIND_CLUSTER_NAME}"
 REGISTRY_NAME="${REGISTRY_NAME:-kind-registry}"
 REGISTRY_PORT="${REGISTRY_PORT:-5001}"
 REGISTRY="${REGISTRY:-localhost:${REGISTRY_PORT}}"
-OPERATOR_IMG="${OPERATOR_IMG:-${REGISTRY}/lakefs-oss-contrib:e2e}"
-AUTHSERVER_IMG="${AUTHSERVER_IMG:-${REGISTRY}/lakefs-auth-server:e2e}"
+OPERATOR_IMG="${OPERATOR_IMG:-${REGISTRY}/lakefs-oss-contrib-operator:e2e}"
+AUTHSERVER_IMG="${AUTHSERVER_IMG:-${REGISTRY}/lakefs-oss-contrib-auth-server:e2e}"
 E2E_NAMESPACE="${E2E_NAMESPACE:-lakefs-oss-e2e}"
 LAKEFS_NAMESPACE="${LAKEFS_NAMESPACE:-lakefs}"
 LAKEFS_RELEASE="${LAKEFS_RELEASE:-lakefs}"
@@ -268,8 +268,8 @@ deploy_operator_stack() {
   make -C "${ROOT_DIR}" manifests kustomize
   "${ROOT_DIR}/bin/kustomize" build "${ROOT_DIR}/config/default" \
     | sed \
-      -e "s#ghcr.io/versioneer-tech/lakefs-oss-contrib:latest#${OPERATOR_IMG}#g" \
-      -e "s#ghcr.io/versioneer-tech/lakefs-auth-server:latest#${AUTHSERVER_IMG}#g" \
+      -e "s#ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:latest#${OPERATOR_IMG}#g" \
+      -e "s#ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:latest#${AUTHSERVER_IMG}#g" \
       -e "s#--default-user-namespace=\$(POD_NAMESPACE)#--default-user-namespace=${E2E_NAMESPACE}#g" \
     | kubectl apply --context "${KIND_CONTEXT}" -f -
 
