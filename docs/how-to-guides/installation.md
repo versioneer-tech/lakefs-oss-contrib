@@ -11,8 +11,8 @@ The stack consists of lakeFS, the `lakefs-oss-contrib` operator, and the `lakefs
 - `envsubst` to substitute installation values after rendering
 - Object storage reachable by lakeFS
 - Two images:
-  - `ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:latest`
-  - `ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:latest`
+  - `ghcr.io/versioneer-tech/lakefs-oss-contrib/operator:latest`
+  - `ghcr.io/versioneer-tech/lakefs-oss-contrib/auth-server:latest`
 
 ## Packaged Base
 
@@ -93,6 +93,6 @@ For local development of the operator and auth server only, generate and apply t
 
 ```bash
 make deploy \
-  IMG=ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:latest \
-  AUTHSERVER_IMG=ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:latest
+  IMG=ghcr.io/versioneer-tech/lakefs-oss-contrib/operator:latest \
+  AUTHSERVER_IMG=ghcr.io/versioneer-tech/lakefs-oss-contrib/auth-server:latest
 ```

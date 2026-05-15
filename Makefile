@@ -1,6 +1,6 @@
 # Image URLs to use for building/pushing image targets.
-OPERATOR_IMG ?= ghcr.io/versioneer-tech/lakefs-oss-contrib-operator:latest
-AUTHSERVER_IMG ?= ghcr.io/versioneer-tech/lakefs-oss-contrib-auth-server:latest
+OPERATOR_IMG ?= ghcr.io/versioneer-tech/lakefs-oss-contrib/operator:latest
+AUTHSERVER_IMG ?= ghcr.io/versioneer-tech/lakefs-oss-contrib/auth-server:latest
 # IMG is kept as a backwards-compatible alias for the operator image.
 IMG ?= $(OPERATOR_IMG)
 # YEAR defines the year value used for substituting the YEAR placeholder in the boilerplate header.

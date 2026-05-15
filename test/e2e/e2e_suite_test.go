@@ -20,9 +20,9 @@ import (
 
 var (
 	// operatorImage is the operator image to be built and loaded for testing.
-	operatorImage = "example.com/lakefs-oss-contrib-operator:v0.0.1"
+	operatorImage = "example.com/lakefs-oss-contrib/operator:v0.0.1"
 	// authServerImage is the auth server image to be built and loaded for testing.
-	authServerImage = "example.com/lakefs-oss-contrib-auth-server:v0.0.1"
+	authServerImage = "example.com/lakefs-oss-contrib/auth-server:v0.0.1"
 )
 
 // TestE2E runs the e2e test suite to validate the solution in an isolated environment.
