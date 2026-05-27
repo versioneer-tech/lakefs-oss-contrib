@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 site_name: lakefs-oss-contrib
-site_url: https://versioneer-tech.github.io/lakefs-oss-contrib/
+site_url: https://lakefs-oss-contrib.versioneer.at/
 repo_url: https://github.com/versioneer-tech/lakefs-oss-contrib
 repo_name: versioneer-tech/lakefs-oss-contrib
 copyright: "Copyright &copy; 2026, Versioneer"
@@ -22,6 +22,8 @@ markdown_extensions:
 theme:
   name: material
   language: en
+  logo: imgs/logo.png
+  favicon: imgs/favicon.ico
   features:
     - content.code.copy
     - search.suggest

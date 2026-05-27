@@ -21,8 +21,6 @@ spec:
 
 A `LakeFSCredential` binds an access key to a user. If the referenced Secret is missing or does not contain `secretAccessKey`, the operator creates or completes it with a generated secret key.
 
-Access keys should use the `lakefs_ak_` prefix and secret keys should use `lakefs_sk_`.
-
 ```yaml
 apiVersion: pkg.internal/v1beta1
 kind: LakeFSCredential
@@ -32,7 +30,7 @@ metadata:
 spec:
   userRef:
     name: user
-  accessKeyId: lakefs_ak_user
+  accessKeyId: user-access-key
   secretRef:
     name: user-credentials
     key: secretAccessKey
@@ -42,18 +40,6 @@ The resulting Secret contains:
 
 - `accessKeyId`
 - `secretAccessKey`
-
-## Role
-
-A `LakeFSRole` stores one or more lakeFS policy templates. Templates can use `<REPOSITORY>` when the same role should be reused for multiple repositories.
-
-The project ships three out-of-the-box roles: `admin`, `owner`, and `viewer`. These satisfy most installations:
-
-- `admin` grants owner permissions on all repositories and can also manage auth and repository CI.
-- `owner` grants read/write access for one repository.
-- `viewer` grants read-only access for one repository.
-
-Customizations are possible by adding another `LakeFSRole` CR dynamically.
 
 ## Group
 
@@ -71,36 +57,6 @@ spec:
   - name: user
   - name: readonly-user
 ```
-
-## Role Binding
-
-A `LakeFSRoleBinding` grants a role to either a user or a group. The binding also carries the repository scope. Use `repository: "*"` for global policies, or a concrete repository name when role templates contain `<REPOSITORY>`.
-
-```yaml
-apiVersion: pkg.internal/v1beta1
-kind: LakeFSRoleBinding
-metadata:
-  name: group-c-repo-c-owner
-  namespace: lakefs
-spec:
-  subject:
-    kind: LakeFSGroup
-    name: group-c
-  roleRef:
-    name: owner
-  repository: repo-c
-```
-
-When lakeFS asks for a user's policies, the auth server evaluates role bindings for the user and all groups that contain that user.
-
-## Example Scenario
-
-The e2e setup demonstrates a compact authorization model with three users and three repositories:
-
-- `admin-user` has owner permissions on `repo-a`, `repo-b`, and `repo-c`, and can also manage auth and repository CI.
-- `user` is bound to `owner` on `repo-a`, so it can read/write `repo-a`.
-- `readonly-user` is bound to `viewer` on `repo-b`, so it can read but not write `repo-b`.
-- `group-c` contains `user` and `readonly-user`, and is bound to `owner` on `repo-c`, so both users can read/write `repo-c`.
 
 ## Repository
 
@@ -132,3 +88,47 @@ For example:
 aws --endpoint-url http://127.0.0.1:18000 \
   s3 cp ./data.txt s3://repo-a/main/data/data.txt
 ```
+
+## Role
+
+A `LakeFSRole` stores one or more lakeFS policy templates. Templates can use `<REPOSITORY>` when the same role should be reused for multiple repositories.
+
+The project ships three out-of-the-box roles: `admin`, `owner`, and `viewer`. These satisfy most installations:
+
+- `admin` grants owner permissions on all repositories and can also manage auth and repository CI.
+- `owner` grants read/write access for one repository.
+- `viewer` grants read-only access for one repository.
+
+Customizations are possible by adding another `LakeFSRole` CR dynamically.
+
+## Role Binding
+
+A `LakeFSRoleBinding` grants a role to either a user or a group. The binding also carries the repository scope. Use `repository: "*"` for global policies, or a concrete repository name when role templates contain `<REPOSITORY>`.
+
+Create the referenced `LakeFSRepository` before applying repository-scoped role bindings so examples and GitOps applies have a concrete repository to reference.
+
+```yaml
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSRoleBinding
+metadata:
+  name: group-c-repo-c-owner
+  namespace: lakefs
+spec:
+  subject:
+    kind: LakeFSGroup
+    name: group-c
+  roleRef:
+    name: owner
+  repository: repo-c
+```
+
+When lakeFS asks for a user's policies, the auth server evaluates role bindings for the user and all groups that contain that user.
+
+## Example Scenario
+
+The e2e setup demonstrates a compact authorization model with three users and three repositories:
+
+- `admin-user` has owner permissions on `repo-a`, `repo-b`, and `repo-c`, and can also manage auth and repository CI.
+- `user` is bound to `owner` on `repo-a`, so it can read/write `repo-a`.
+- `readonly-user` is bound to `viewer` on `repo-b`, so it can read but not write `repo-b`.
+- `group-c` contains `user` and `readonly-user`, and is bound to `owner` on `repo-c`, so both users can read/write `repo-c`.

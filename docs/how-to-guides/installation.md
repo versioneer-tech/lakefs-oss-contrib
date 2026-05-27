@@ -41,7 +41,7 @@ export LAKEFS_BLOCKSTORE_SECRET_ACCESS_KEY=<object-storage-secret-key>
 export LAKEFS_BLOCKSTORE_REGION=<object-storage-region>
 export LAKEFS_BLOCKSTORE_ENDPOINT=<object-storage-endpoint>
 export LAKEFS_INSTALLATION_USER_NAME=admin-user
-export LAKEFS_INSTALLATION_ACCESS_KEY_ID=lakefs_ak_admin
+export LAKEFS_INSTALLATION_ACCESS_KEY_ID=<lakefs-admin-access-key-id>
 export LAKEFS_INSTALLATION_SECRET_ACCESS_KEY=<lakefs-admin-secret-key>
 
 kustomize build vendor/lakefs-oss-contrib/default \
@@ -51,7 +51,7 @@ kustomize build vendor/lakefs-oss-contrib/default \
 
 The packaged base creates:
 
-- CRDs for `LakeFSUser`, `LakeFSGroup`, `LakeFSCredential`, `LakeFSRole`, `LakeFSRoleBinding`, and `LakeFSRepository`
+- CRDs for `LakeFSUser`, `LakeFSGroup`, `LakeFSCredential`, `LakeFSRepository`, `LakeFSRole`, and `LakeFSRoleBinding`
 - lakeFS with external auth configured and the initial setup screen skipped
 - operator Deployment
 - auth-server Deployment and Service

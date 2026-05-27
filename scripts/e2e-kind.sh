@@ -67,7 +67,7 @@ Runs the local lakeFS OSS operator e2e smoke test:
   - build/push operator and auth-server images locally
   - deploy operator/auth-server
   - install lakeFS with stats.enabled=false
-  - create three LakeFSUser objects, one LakeFSGroup, credentials, roles, role bindings, and three repositories
+  - create three LakeFSUser objects, one LakeFSGroup, credentials, repositories, roles, and role bindings
   - verify admin, owner, viewer, and group-inherited S3 access through lakeFS
 
 Useful environment variables:
@@ -532,6 +532,42 @@ spec:
   - name: ${E2E_READONLY_USER}
 ---
 apiVersion: pkg.internal/v1beta1
+kind: LakeFSRepository
+metadata:
+  name: ${E2E_REPO_A}
+  namespace: ${E2E_NAMESPACE}
+spec:
+  endpoint: http://lakefs.${LAKEFS_NAMESPACE}.svc
+  storageNamespace: ${E2E_STORAGE_NAMESPACE_A}
+  defaultBranch: main
+  credentialsSecretRef:
+    name: ${E2E_ADMIN_CREDENTIAL_SECRET}
+---
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSRepository
+metadata:
+  name: ${E2E_REPO_B}
+  namespace: ${E2E_NAMESPACE}
+spec:
+  endpoint: http://lakefs.${LAKEFS_NAMESPACE}.svc
+  storageNamespace: ${E2E_STORAGE_NAMESPACE_B}
+  defaultBranch: main
+  credentialsSecretRef:
+    name: ${E2E_ADMIN_CREDENTIAL_SECRET}
+---
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSRepository
+metadata:
+  name: ${E2E_REPO_C}
+  namespace: ${E2E_NAMESPACE}
+spec:
+  endpoint: http://lakefs.${LAKEFS_NAMESPACE}.svc
+  storageNamespace: ${E2E_STORAGE_NAMESPACE_C}
+  defaultBranch: main
+  credentialsSecretRef:
+    name: ${E2E_ADMIN_CREDENTIAL_SECRET}
+---
+apiVersion: pkg.internal/v1beta1
 kind: LakeFSRole
 metadata:
   name: admin
@@ -658,42 +694,6 @@ spec:
   roleRef:
     name: owner
   repository: ${E2E_REPO_C}
----
-apiVersion: pkg.internal/v1beta1
-kind: LakeFSRepository
-metadata:
-  name: ${E2E_REPO_A}
-  namespace: ${E2E_NAMESPACE}
-spec:
-  endpoint: http://lakefs.${LAKEFS_NAMESPACE}.svc
-  storageNamespace: ${E2E_STORAGE_NAMESPACE_A}
-  defaultBranch: main
-  credentialsSecretRef:
-    name: ${E2E_ADMIN_CREDENTIAL_SECRET}
----
-apiVersion: pkg.internal/v1beta1
-kind: LakeFSRepository
-metadata:
-  name: ${E2E_REPO_B}
-  namespace: ${E2E_NAMESPACE}
-spec:
-  endpoint: http://lakefs.${LAKEFS_NAMESPACE}.svc
-  storageNamespace: ${E2E_STORAGE_NAMESPACE_B}
-  defaultBranch: main
-  credentialsSecretRef:
-    name: ${E2E_ADMIN_CREDENTIAL_SECRET}
----
-apiVersion: pkg.internal/v1beta1
-kind: LakeFSRepository
-metadata:
-  name: ${E2E_REPO_C}
-  namespace: ${E2E_NAMESPACE}
-spec:
-  endpoint: http://lakefs.${LAKEFS_NAMESPACE}.svc
-  storageNamespace: ${E2E_STORAGE_NAMESPACE_C}
-  defaultBranch: main
-  credentialsSecretRef:
-    name: ${E2E_ADMIN_CREDENTIAL_SECRET}
 EOF
 
   kubectl wait \
@@ -772,10 +772,13 @@ wait_for_lakefs_port_forward() {
 }
 
 use_lakefs_credential() {
-  local access_key_id="$1"
-  local secret_name="$2"
+  local secret_name="$1"
   unset AWS_PROFILE AWS_SESSION_TOKEN
-  export AWS_ACCESS_KEY_ID="${access_key_id}"
+  export AWS_ACCESS_KEY_ID
+  AWS_ACCESS_KEY_ID="$(kubectl get secret "${secret_name}" \
+    -n "${E2E_NAMESPACE}" \
+    --context "${KIND_CONTEXT}" \
+    -o jsonpath='{.data.accessKeyId}' | base64 -d)"
   export AWS_SECRET_ACCESS_KEY
   AWS_SECRET_ACCESS_KEY="$(kubectl get secret "${secret_name}" \
     -n "${E2E_NAMESPACE}" \
@@ -823,31 +826,31 @@ run_s3_smoke() {
   local tmp_object
   tmp_object="$(write_tmp_object "hello from lakefs-oss-contrib e2e")"
 
-  use_lakefs_credential "${E2E_ADMIN_ACCESS_KEY_ID}" "${E2E_ADMIN_CREDENTIAL_SECRET}"
+  use_lakefs_credential "${E2E_ADMIN_CREDENTIAL_SECRET}"
   expect_s3_success "admin-user can list all repositories" lakefs_s3 s3 ls
   expect_s3_success "admin-user can write ${E2E_REPO_A}" lakefs_s3 s3 cp "${tmp_object}" "s3://${E2E_REPO_A}/main/admin-user/repo-a.txt"
   expect_s3_success "admin-user can write ${E2E_REPO_B}" lakefs_s3 s3 cp "${tmp_object}" "s3://${E2E_REPO_B}/main/admin-user/repo-b.txt"
   expect_s3_success "admin-user can read ${E2E_REPO_A}" lakefs_s3 s3 ls "s3://${E2E_REPO_A}/main/admin-user/"
   expect_s3_success "admin-user can read ${E2E_REPO_B}" lakefs_s3 s3 ls "s3://${E2E_REPO_B}/main/admin-user/"
 
-  use_lakefs_credential "${E2E_USER_ACCESS_KEY_ID}" "${E2E_USER_CREDENTIAL_SECRET}"
+  use_lakefs_credential "${E2E_USER_CREDENTIAL_SECRET}"
   expect_s3_success "user can read ${E2E_REPO_A}" lakefs_s3 s3 ls "s3://${E2E_REPO_A}/main/admin-user/"
   expect_s3_success "user can write ${E2E_REPO_A}" lakefs_s3 s3 cp "${tmp_object}" "s3://${E2E_REPO_A}/main/user/write.txt"
   expect_s3_failure "user cannot write ${E2E_REPO_B}" lakefs_s3 s3 cp "${tmp_object}" "s3://${E2E_REPO_B}/main/user/denied.txt"
 
-  use_lakefs_credential "${E2E_READONLY_ACCESS_KEY_ID}" "${E2E_READONLY_CREDENTIAL_SECRET}"
+  use_lakefs_credential "${E2E_READONLY_CREDENTIAL_SECRET}"
   expect_s3_success "readonly-user can read ${E2E_REPO_B}" lakefs_s3 s3 ls "s3://${E2E_REPO_B}/main/admin-user/"
   expect_s3_failure "readonly-user cannot write ${E2E_REPO_B}" lakefs_s3 s3 cp "${tmp_object}" "s3://${E2E_REPO_B}/main/readonly-user/denied.txt"
   expect_s3_failure "readonly-user cannot write ${E2E_REPO_A}" lakefs_s3 s3 cp "${tmp_object}" "s3://${E2E_REPO_A}/main/readonly-user/denied.txt"
 
-  use_lakefs_credential "${E2E_ADMIN_ACCESS_KEY_ID}" "${E2E_ADMIN_CREDENTIAL_SECRET}"
+  use_lakefs_credential "${E2E_ADMIN_CREDENTIAL_SECRET}"
   expect_s3_success "admin-user can write ${E2E_REPO_C}" lakefs_s3 s3 cp "${tmp_object}" "s3://${E2E_REPO_C}/main/admin-user/repo-c.txt"
 
-  use_lakefs_credential "${E2E_USER_ACCESS_KEY_ID}" "${E2E_USER_CREDENTIAL_SECRET}"
+  use_lakefs_credential "${E2E_USER_CREDENTIAL_SECRET}"
   expect_s3_success "group-c gives user write access to ${E2E_REPO_C}" lakefs_s3 s3 cp "${tmp_object}" "s3://${E2E_REPO_C}/main/user/group-c.txt"
   expect_s3_success "group-c gives user read access to ${E2E_REPO_C}" lakefs_s3 s3 ls "s3://${E2E_REPO_C}/main/user/"
 
-  use_lakefs_credential "${E2E_READONLY_ACCESS_KEY_ID}" "${E2E_READONLY_CREDENTIAL_SECRET}"
+  use_lakefs_credential "${E2E_READONLY_CREDENTIAL_SECRET}"
   expect_s3_success "group-c gives readonly-user write access to ${E2E_REPO_C}" lakefs_s3 s3 cp "${tmp_object}" "s3://${E2E_REPO_C}/main/readonly-user/group-c.txt"
   expect_s3_success "group-c gives readonly-user read access to ${E2E_REPO_C}" lakefs_s3 s3 ls "s3://${E2E_REPO_C}/main/readonly-user/"
 

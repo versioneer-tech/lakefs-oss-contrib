@@ -7,7 +7,7 @@ The repository includes a Kind-based e2e script that installs a complete local s
 - operator and auth-server images
 - MinIO as the lakeFS blockstore backend
 - lakeFS with external auth enabled
-- `LakeFSUser`, `LakeFSGroup`, `LakeFSCredential`, `LakeFSRole`, `LakeFSRoleBinding`, and `LakeFSRepository`
+- `LakeFSUser`, `LakeFSGroup`, `LakeFSCredential`, `LakeFSRepository`, `LakeFSRole`, and `LakeFSRoleBinding`
 - S3 authorization matrix through the lakeFS gateway
 
 Run it with:
@@ -68,7 +68,10 @@ Use the generated credential:
 ```bash
 unset AWS_PROFILE AWS_SESSION_TOKEN
 
-export AWS_ACCESS_KEY_ID=lakefs_ak_admin
+export AWS_ACCESS_KEY_ID="$(kubectl get secret admin-credentials \
+  -n lakefs-oss-e2e \
+  --context kind-lakefs-oss-contrib-e2e \
+  -o jsonpath='{.data.accessKeyId}' | base64 -d)"
 export AWS_SECRET_ACCESS_KEY="$(kubectl get secret admin-credentials \
   -n lakefs-oss-e2e \
   --context kind-lakefs-oss-contrib-e2e \
