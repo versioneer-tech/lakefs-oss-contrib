@@ -50,6 +50,27 @@ func (c *Client) EnsureRepository(ctx context.Context, repository RepositorySpec
 	return c.createRepository(ctx, repository)
 }
 
+func (c *Client) DeleteRepository(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.repositoryURL(name)+"?force=true", nil)
+	if err != nil {
+		return err
+	}
+	c.authorize(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusNoContent, http.StatusNotFound:
+		return nil
+	default:
+		return fmt.Errorf("lakeFS repository delete failed with HTTP %d", resp.StatusCode)
+	}
+}
+
 func (c *Client) repositoryExists(ctx context.Context, name string) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.repositoryURL(name), nil)
 	if err != nil {

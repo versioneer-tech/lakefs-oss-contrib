@@ -66,8 +66,10 @@ Runs the local lakeFS OSS operator e2e smoke test:
   - create/reuse Kind cluster and local registry
   - build/push operator and auth-server images locally
   - deploy operator/auth-server
+  - create the lakeFS bootstrap admin group as Kubernetes state
   - install lakeFS with stats.enabled=false
   - create three LakeFSUser objects, one LakeFSGroup, credentials, repositories, roles, and role bindings
+  - create and delete a timestamped lakeFS repository through LakeFSRepository reconciliation
   - verify admin, owner, viewer, and group-inherited S3 access through lakeFS
 
 Useful environment variables:
@@ -305,6 +307,26 @@ verify_platform_endpoints() {
     '
 }
 
+ensure_lakefs_bootstrap_group() {
+  log "Ensuring lakeFS bootstrap admin group"
+  kubectl apply --context "${KIND_CONTEXT}" -f - <<EOF
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSGroup
+metadata:
+  name: group-admins
+  namespace: ${E2E_NAMESPACE}
+spec:
+  externalId: Admins
+  description: lakeFS bootstrap admins
+EOF
+
+  kubectl wait lakefsgroup/group-admins \
+    -n "${E2E_NAMESPACE}" \
+    --for=condition=Ready \
+    --context "${KIND_CONTEXT}" \
+    --timeout=120s
+}
+
 install_lakefs() {
   log "Installing lakeFS with external auth and stats disabled"
   tmp_values="$(mktemp)"
@@ -388,7 +410,7 @@ apply_e2e_resources() {
     --ignore-not-found=true \
     --wait=true \
     --timeout=120s
-  kubectl delete "lakefsgroup/${E2E_GROUP_C}" lakefsgroup/group-admins \
+  kubectl delete "lakefsgroup/${E2E_GROUP_C}" \
     -n "${E2E_NAMESPACE}" \
     --context "${KIND_CONTEXT}" \
     --ignore-not-found=true \
@@ -812,12 +834,163 @@ expect_s3_failure() {
   fi
 }
 
+lakefs_api_status() {
+  local method="$1"
+  local path="$2"
+  local body_file="$3"
+
+  curl -sS \
+    -o "${body_file}" \
+    -w "%{http_code}" \
+    -u "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
+    -X "${method}" \
+    "http://127.0.0.1:${LAKEFS_PORT}/api/v1${path}"
+}
+
+expect_lakefs_api_status() {
+  local label="$1"
+  local method="$2"
+  local path="$3"
+  local expected_status="$4"
+  local body_file
+  local status
+
+  log "${label}"
+  body_file="$(mktemp)"
+  if ! status="$(lakefs_api_status "${method}" "${path}" "${body_file}")"; then
+    echo "lakeFS API request failed: ${method} ${path}" >&2
+    cat "${body_file}" >&2 || true
+    rm -f "${body_file}"
+    return 1
+  fi
+
+  if [[ "${status}" != "${expected_status}" ]]; then
+    echo "expected HTTP ${expected_status} from ${method} ${path}, got ${status}" >&2
+    cat "${body_file}" >&2 || true
+    rm -f "${body_file}"
+    return 1
+  fi
+
+  rm -f "${body_file}"
+}
+
+wait_lakefs_api_status() {
+  local label="$1"
+  local method="$2"
+  local path="$3"
+  local expected_status="$4"
+  local timeout_seconds="${5:-30}"
+  local body_file
+  local deadline
+  local status
+
+  log "${label}"
+  body_file="$(mktemp)"
+  deadline=$((SECONDS + timeout_seconds))
+
+  while true; do
+    if ! status="$(lakefs_api_status "${method}" "${path}" "${body_file}")"; then
+      echo "lakeFS API request failed: ${method} ${path}" >&2
+      cat "${body_file}" >&2 || true
+      rm -f "${body_file}"
+      return 1
+    fi
+
+    if [[ "${status}" == "${expected_status}" ]]; then
+      rm -f "${body_file}"
+      return 0
+    fi
+
+    if (( SECONDS >= deadline )); then
+      echo "expected HTTP ${expected_status} from ${method} ${path} within ${timeout_seconds}s, got ${status}" >&2
+      cat "${body_file}" >&2 || true
+      rm -f "${body_file}"
+      return 1
+    fi
+
+    sleep 2
+  done
+}
+
 write_tmp_object() {
   local message="$1"
   local tmp_object
   tmp_object="$(mktemp)"
   printf '%s\n' "${message}" >"${tmp_object}"
   printf '%s' "${tmp_object}"
+}
+
+cleanup_lifecycle_repository() {
+  local repository_name="$1"
+
+  kubectl delete "lakefsrepository/${repository_name}" \
+    -n "${E2E_NAMESPACE}" \
+    --context "${KIND_CONTEXT}" \
+    --ignore-not-found=true \
+    --wait=true \
+    --timeout=120s >/dev/null 2>&1 || true
+
+  if use_lakefs_credential "${E2E_ADMIN_CREDENTIAL_SECRET}" >/dev/null 2>&1; then
+    lakefs_api_status "DELETE" "/repositories/${repository_name}?force=true" /dev/null >/dev/null 2>&1 || true
+  fi
+}
+
+run_repository_lifecycle_smoke() {
+  local timestamp
+  local repository_name
+  local status=0
+
+  timestamp="$(date -u +%Y%m%d%H%M%S)"
+  repository_name="repo-lifecycle-${timestamp}-$$"
+
+  log "Running repository lifecycle smoke for ${repository_name}"
+  kubectl apply --context "${KIND_CONTEXT}" -f - <<EOF || status=$?
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSRepository
+metadata:
+  name: ${repository_name}
+  namespace: ${E2E_NAMESPACE}
+spec:
+  endpoint: http://lakefs.${LAKEFS_NAMESPACE}.svc
+  storageNamespace: s3://${E2E_S3_BUCKET}/${repository_name}
+  defaultBranch: main
+  credentialsSecretRef:
+    name: ${E2E_ADMIN_CREDENTIAL_SECRET}
+EOF
+
+  if [[ "${status}" -eq 0 ]]; then
+    kubectl wait "lakefsrepository/${repository_name}" \
+      -n "${E2E_NAMESPACE}" \
+      --for=condition=Ready \
+      --context "${KIND_CONTEXT}" \
+      --timeout=180s || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    use_lakefs_credential "${E2E_ADMIN_CREDENTIAL_SECRET}" || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    expect_lakefs_api_status "timestamped repository exists" \
+      "GET" "/repositories/${repository_name}" "200" || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    log "Deleting timestamped LakeFSRepository resource through the controller"
+    kubectl delete "lakefsrepository/${repository_name}" \
+      -n "${E2E_NAMESPACE}" \
+      --context "${KIND_CONTEXT}" \
+      --wait=true \
+      --timeout=120s || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    wait_lakefs_api_status "controller-deleted timestamped repository returns 404" \
+      "GET" "/repositories/${repository_name}" "404" 30 || status=$?
+  fi
+
+  cleanup_lifecycle_repository "${repository_name}"
+  return "${status}"
 }
 
 run_s3_smoke() {
@@ -902,9 +1075,15 @@ main() {
   deploy_operator_stack
   verify_platform_endpoints
   deploy_s3_backend
+  ensure_lakefs_bootstrap_group
   install_lakefs
   apply_e2e_resources
   wait_for_lakefs_port_forward
+
+  if ! run_repository_lifecycle_smoke; then
+    dump_debug
+    exit 1
+  fi
 
   if ! run_s3_smoke; then
     dump_debug

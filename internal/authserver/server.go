@@ -108,15 +108,7 @@ type errorResponse struct {
 	Message string `json:"message"`
 }
 
-var (
-	safeObjectName = regexp.MustCompile(`[^a-z0-9.-]+`)
-	builtinGroups  = map[string]struct{}{
-		"Admins":     {},
-		"SuperUsers": {},
-		"Developers": {},
-		"Viewers":    {},
-	}
-)
+var safeObjectName = regexp.MustCompile(`[^a-z0-9.-]+`)
 
 type Option func(*Server)
 
@@ -549,12 +541,7 @@ func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results := make([]group, 0, len(builtinGroups)+len(groups.Items))
-	for groupID := range builtinGroups {
-		if item, ok := builtinGroup(groupID); ok {
-			results = append(results, item)
-		}
-	}
+	results := make([]group, 0, len(groups.Items))
 	for i := range groups.Items {
 		results = append(results, groupFromGroup(&groups.Items[i]))
 	}
@@ -590,10 +577,6 @@ func (s *Server) getGroup(w http.ResponseWriter, r *http.Request, groupID string
 		writeJSON(w, http.StatusOK, groupFromGroup(group))
 		return
 	}
-	if item, ok := builtinGroup(groupID); ok {
-		writeJSON(w, http.StatusOK, item)
-		return
-	}
 	writeError(w, http.StatusNotFound, "group not found")
 }
 
@@ -614,16 +597,8 @@ func (s *Server) deleteGroup(w http.ResponseWriter, r *http.Request, groupID str
 func (s *Server) addGroupMembership(w http.ResponseWriter, r *http.Request, groupID, userID string) {
 	group, ok := s.resolveGroup(r.Context(), groupID)
 	if !ok {
-		if _, builtin := builtinGroup(groupID); !builtin {
-			writeError(w, http.StatusNotFound, "group not found")
-			return
-		}
-		var err error
-		group, err = s.ensureGroup(r.Context(), groupID, groupID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to create group")
-			return
-		}
+		writeError(w, http.StatusNotFound, "group not found")
+		return
 	}
 	user, ok := s.resolveUser(r.Context(), userID)
 	if !ok || user.Namespace != group.Namespace {
@@ -672,16 +647,8 @@ func (s *Server) removeGroupMembership(w http.ResponseWriter, r *http.Request, g
 func (s *Server) attachPolicyToGroup(w http.ResponseWriter, r *http.Request, groupID, policyID string) {
 	group, ok := s.resolveGroup(r.Context(), groupID)
 	if !ok {
-		if _, builtin := builtinGroup(groupID); !builtin {
-			writeError(w, http.StatusNotFound, "group not found")
-			return
-		}
-		var err error
-		group, err = s.ensureGroup(r.Context(), groupID, groupID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to create group")
-			return
-		}
+		writeError(w, http.StatusNotFound, "group not found")
+		return
 	}
 	repository := repositoryScope(r)
 	role, ok := s.resolveRoleForPolicy(r.Context(), policyID, repository)
@@ -1336,18 +1303,6 @@ func groupFromGroup(item *pkgv1beta1.LakeFSGroup) group {
 		CreationDate: item.CreationTimestamp.Unix(),
 		Description:  item.Spec.Description,
 	}
-}
-
-func builtinGroup(groupID string) (group, bool) {
-	if _, ok := builtinGroups[groupID]; !ok {
-		return group{}, false
-	}
-	return group{
-		ID:           groupID,
-		Name:         groupID,
-		CreationDate: time.Now().Unix(),
-		Description:  groupID,
-	}, true
 }
 
 func groupName(item *pkgv1beta1.LakeFSGroup) string {

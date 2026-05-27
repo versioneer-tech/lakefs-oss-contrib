@@ -163,7 +163,36 @@ func TestGroupPolicyBindingAppliesToUserPolicies(t *testing.T) {
 	}
 }
 
-func TestAddBuiltInGroupMembershipCreatesGroup(t *testing.T) {
+func TestListGroupsOnlyReturnsLakeFSGroups(t *testing.T) {
+	lakeFSGroup := &pkgv1beta1.LakeFSGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "e2e-owners", Namespace: "lakefs-users"},
+		Spec: pkgv1beta1.LakeFSGroupSpec{
+			Description: "lakeFS e2e owners",
+		},
+	}
+	k8sClient := newFakeClient(t, lakeFSGroup)
+	server := New(k8sClient, ":0", WithDefaultUserNamespace("lakefs-users"))
+
+	request := httptest.NewRequest(http.MethodGet, "/auth/v1/auth/groups", nil)
+	response := httptest.NewRecorder()
+	server.routes().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, response.Code, response.Body.String())
+	}
+
+	var payload paginatedResponse[group]
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Results) != 1 {
+		t.Fatalf("expected only Kubernetes-backed groups, got %#v", payload.Results)
+	}
+	if payload.Results[0].ID != "lakefs-users:e2e-owners" {
+		t.Fatalf("expected namespaced group id, got %q", payload.Results[0].ID)
+	}
+}
+
+func TestAddMissingGroupMembershipReturnsNotFound(t *testing.T) {
 	user := &pkgv1beta1.LakeFSUser{
 		ObjectMeta: metav1.ObjectMeta{Name: "admin", Namespace: "lakefs-users"},
 		Spec: pkgv1beta1.LakeFSUserSpec{
@@ -176,20 +205,16 @@ func TestAddBuiltInGroupMembershipCreatesGroup(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPut, "/auth/v1/auth/groups/Admins/members/admin", nil)
 	response := httptest.NewRecorder()
 	server.routes().ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("expected status %d, got %d with body %s", http.StatusCreated, response.Code, response.Body.String())
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusNotFound, response.Code, response.Body.String())
 	}
 
-	group := &pkgv1beta1.LakeFSGroup{}
-	key := types.NamespacedName{Namespace: "lakefs-users", Name: "group-admins"}
-	if err := k8sClient.Get(context.Background(), key, group); err != nil {
-		t.Fatalf("expected LakeFSGroup to be created: %v", err)
+	groups := &pkgv1beta1.LakeFSGroupList{}
+	if err := k8sClient.List(context.Background(), groups); err != nil {
+		t.Fatalf("list groups: %v", err)
 	}
-	if group.Spec.ExternalID != "Admins" {
-		t.Fatalf("expected external ID Admins, got %q", group.Spec.ExternalID)
-	}
-	if len(group.Spec.Users) != 1 || group.Spec.Users[0].Name != "admin" {
-		t.Fatalf("expected admin group membership, got %#v", group.Spec.Users)
+	if len(groups.Items) != 0 {
+		t.Fatalf("expected no implicit groups, got %#v", groups.Items)
 	}
 }
 
