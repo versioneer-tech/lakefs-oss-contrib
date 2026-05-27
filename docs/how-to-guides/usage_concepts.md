@@ -101,6 +101,35 @@ The project ships three out-of-the-box roles: `admin`, `owner`, and `viewer`. Th
 
 Customizations are possible by adding another `LakeFSRole` CR dynamically.
 
+```yaml
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSRole
+metadata:
+  name: owner
+  namespace: lakefs
+spec:
+  description: Owner
+  policies:
+  - name: <REPOSITORY>-owner
+    statement:
+    - effect: allow
+      action:
+      - fs:*
+      resource: arn:lakefs:fs:::repository/<REPOSITORY>
+    - effect: allow
+      action:
+      - fs:*
+      resource: arn:lakefs:fs:::repository/<REPOSITORY>/branch/*
+    - effect: allow
+      action:
+      - fs:*
+      resource: arn:lakefs:fs:::repository/<REPOSITORY>/object/*
+    - effect: allow
+      action:
+      - fs:ListRepositories
+      resource: "*"
+```
+
 ## Role Binding
 
 A `LakeFSRoleBinding` grants a role to either a user or a group. The binding also carries the repository scope. Use `repository: "*"` for global policies, or a concrete repository name when role templates contain `<REPOSITORY>`.
