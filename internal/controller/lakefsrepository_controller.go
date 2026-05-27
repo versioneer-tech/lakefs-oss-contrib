@@ -15,10 +15,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	pkgv1beta1 "github.com/versioneer-tech/lakefs-oss-contrib/api/v1beta1"
 	"github.com/versioneer-tech/lakefs-oss-contrib/internal/lakefs"
 )
+
+const lakeFSRepositoryFinalizer = "lakefs-oss-contrib.versioneer.at/repository"
 
 // LakeFSRepositoryReconciler reconciles a LakeFSRepository object
 type LakeFSRepositoryReconciler struct {
@@ -40,6 +43,24 @@ func (r *LakeFSRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
+	if !repository.ObjectMeta.DeletionTimestamp.IsZero() {
+		if !controllerutil.ContainsFinalizer(repository, lakeFSRepositoryFinalizer) {
+			return ctrl.Result{}, nil
+		}
+		if err := r.deleteRepository(ctx, repository); err != nil {
+			return ctrl.Result{RequeueAfter: time.Minute}, err
+		}
+		controllerutil.RemoveFinalizer(repository, lakeFSRepositoryFinalizer)
+		return ctrl.Result{}, r.Update(ctx, repository)
+	}
+
+	if !controllerutil.ContainsFinalizer(repository, lakeFSRepositoryFinalizer) {
+		controllerutil.AddFinalizer(repository, lakeFSRepositoryFinalizer)
+		if err := r.Update(ctx, repository); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	condition, reconcileErr := r.ensureRepository(ctx, repository)
 	repository.Status.ObservedGeneration = repository.Generation
 	repository.Status.Repository = repository.RepositoryName()
@@ -57,6 +78,22 @@ func (r *LakeFSRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return ctrl.Result{}, nil
 }
 
+func (r *LakeFSRepositoryReconciler) deleteRepository(ctx context.Context, repository *pkgv1beta1.LakeFSRepository) error {
+	repositoryName := repository.RepositoryName()
+	if repositoryName == "" {
+		return fmt.Errorf("LakeFSRepository must resolve to a repository name")
+	}
+	if repository.Spec.Endpoint == "" {
+		return fmt.Errorf("LakeFSRepository must set spec.endpoint")
+	}
+
+	client, err := r.repositoryClient(ctx, repository)
+	if err != nil {
+		return err
+	}
+	return client.DeleteRepository(ctx, repositoryName)
+}
+
 func (r *LakeFSRepositoryReconciler) ensureRepository(ctx context.Context, repository *pkgv1beta1.LakeFSRepository) (metav1.Condition, error) {
 	repositoryName := repository.RepositoryName()
 	if repositoryName == "" {
@@ -69,23 +106,11 @@ func (r *LakeFSRepositoryReconciler) ensureRepository(ctx context.Context, repos
 		return readyCondition(metav1.ConditionFalse, ReasonInvalid, "LakeFSRepository must set spec.storageNamespace", repository.Generation), nil
 	}
 
-	secret := &corev1.Secret{}
-	secretKey := types.NamespacedName{
-		Namespace: repository.CredentialsSecretNamespace(),
-		Name:      repository.Spec.CredentialsSecretRef.Name,
+	client, condition, err := r.repositoryClientForStatus(ctx, repository)
+	if err != nil {
+		return condition, nil
 	}
-	if err := r.Get(ctx, secretKey, secret); err != nil {
-		return readyCondition(metav1.ConditionFalse, ReasonUnavailable, fmt.Sprintf("Credentials Secret %s is not available", secretKey.String()), repository.Generation), nil
-	}
-
-	accessKeyID := string(secret.Data[repository.Spec.CredentialsSecretRef.AccessKeyIDDataKey()])
-	secretAccessKey := string(secret.Data[repository.Spec.CredentialsSecretRef.SecretAccessKeyDataKey()])
-	if accessKeyID == "" || secretAccessKey == "" {
-		return readyCondition(metav1.ConditionFalse, ReasonInvalid, fmt.Sprintf("Credentials Secret %s is missing configured keys", secretKey.String()), repository.Generation), nil
-	}
-
-	client := lakefs.NewClient(repository.Spec.Endpoint, accessKeyID, secretAccessKey, nil)
-	err := client.EnsureRepository(ctx, lakefs.RepositorySpec{
+	err = client.EnsureRepository(ctx, lakefs.RepositorySpec{
 		Name:             repositoryName,
 		StorageNamespace: repository.Spec.StorageNamespace,
 		DefaultBranch:    repository.DefaultBranchName(),
@@ -96,6 +121,33 @@ func (r *LakeFSRepositoryReconciler) ensureRepository(ctx context.Context, repos
 	}
 
 	return readyCondition(metav1.ConditionTrue, ReasonResolved, "lakeFS repository exists", repository.Generation), nil
+}
+
+func (r *LakeFSRepositoryReconciler) repositoryClientForStatus(ctx context.Context, repository *pkgv1beta1.LakeFSRepository) (*lakefs.Client, metav1.Condition, error) {
+	client, err := r.repositoryClient(ctx, repository)
+	if err != nil {
+		return nil, readyCondition(metav1.ConditionFalse, ReasonUnavailable, err.Error(), repository.Generation), err
+	}
+	return client, metav1.Condition{}, nil
+}
+
+func (r *LakeFSRepositoryReconciler) repositoryClient(ctx context.Context, repository *pkgv1beta1.LakeFSRepository) (*lakefs.Client, error) {
+	secret := &corev1.Secret{}
+	secretKey := types.NamespacedName{
+		Namespace: repository.CredentialsSecretNamespace(),
+		Name:      repository.Spec.CredentialsSecretRef.Name,
+	}
+	if err := r.Get(ctx, secretKey, secret); err != nil {
+		return nil, fmt.Errorf("Credentials Secret %s is not available", secretKey.String())
+	}
+
+	accessKeyID := string(secret.Data[repository.Spec.CredentialsSecretRef.AccessKeyIDDataKey()])
+	secretAccessKey := string(secret.Data[repository.Spec.CredentialsSecretRef.SecretAccessKeyDataKey()])
+	if accessKeyID == "" || secretAccessKey == "" {
+		return nil, fmt.Errorf("Credentials Secret %s is missing configured keys", secretKey.String())
+	}
+
+	return lakefs.NewClient(repository.Spec.Endpoint, accessKeyID, secretAccessKey, nil), nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

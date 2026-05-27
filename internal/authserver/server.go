@@ -313,6 +313,10 @@ func (s *Server) handleGroupPath(w http.ResponseWriter, r *http.Request, tail st
 		}
 		return
 	}
+	if len(parts) == 2 && parts[1] == "members" && r.Method == http.MethodGet {
+		s.listGroupMembers(w, r, parts[0])
+		return
+	}
 	if len(parts) == 3 && parts[1] == "policies" {
 		switch r.Method {
 		case http.MethodPut:
@@ -570,6 +574,29 @@ func (s *Server) createGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, groupFromGroup(group))
+}
+
+func (s *Server) listGroupMembers(w http.ResponseWriter, r *http.Request, groupID string) {
+	group, ok := s.resolveGroup(r.Context(), groupID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "group not found")
+		return
+	}
+
+	results := make([]user, 0, len(group.Spec.Users))
+	for _, member := range group.Spec.Users {
+		item := &pkgv1beta1.LakeFSUser{}
+		key := types.NamespacedName{Namespace: group.Namespace, Name: member.Name}
+		if err := s.client.Get(r.Context(), key, item); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			writeError(w, http.StatusInternalServerError, "failed to list group members")
+			return
+		}
+		results = append(results, userFromUser(item))
+	}
+	writeJSON(w, http.StatusOK, newPaginatedResponse(results))
 }
 
 func (s *Server) getGroup(w http.ResponseWriter, r *http.Request, groupID string) {

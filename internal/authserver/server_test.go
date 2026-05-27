@@ -192,6 +192,54 @@ func TestListGroupsOnlyReturnsLakeFSGroups(t *testing.T) {
 	}
 }
 
+func TestListGroupMembersReturnsGroupUsers(t *testing.T) {
+	alice := &pkgv1beta1.LakeFSUser{
+		ObjectMeta: metav1.ObjectMeta{Name: "alice", Namespace: "lakefs-users"},
+		Spec: pkgv1beta1.LakeFSUserSpec{
+			ExternalID:   "alice",
+			FriendlyName: "Alice",
+		},
+	}
+	bob := &pkgv1beta1.LakeFSUser{
+		ObjectMeta: metav1.ObjectMeta{Name: "bob", Namespace: "lakefs-users"},
+		Spec: pkgv1beta1.LakeFSUserSpec{
+			ExternalID:   "bob",
+			FriendlyName: "Bob",
+		},
+	}
+	group := &pkgv1beta1.LakeFSGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "owners", Namespace: "lakefs-users"},
+		Spec: pkgv1beta1.LakeFSGroupSpec{
+			ExternalID: "owners",
+			Users: []pkgv1beta1.LakeFSUserReference{
+				{Name: "alice"},
+				{Name: "missing-user"},
+				{Name: "bob"},
+			},
+		},
+	}
+	k8sClient := newFakeClient(t, alice, bob, group)
+	server := New(k8sClient, ":0", WithDefaultUserNamespace("lakefs-users"))
+
+	request := httptest.NewRequest(http.MethodGet, "/auth/v1/auth/groups/owners/members", nil)
+	response := httptest.NewRecorder()
+	server.routes().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d with body %s", http.StatusOK, response.Code, response.Body.String())
+	}
+
+	var payload paginatedResponse[user]
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Results) != 2 {
+		t.Fatalf("expected two group members, got %#v", payload.Results)
+	}
+	if payload.Results[0].Username != "alice" || payload.Results[1].Username != "bob" {
+		t.Fatalf("expected alice and bob group members, got %#v", payload.Results)
+	}
+}
+
 func TestAddMissingGroupMembershipReturnsNotFound(t *testing.T) {
 	user := &pkgv1beta1.LakeFSUser{
 		ObjectMeta: metav1.ObjectMeta{Name: "admin", Namespace: "lakefs-users"},
