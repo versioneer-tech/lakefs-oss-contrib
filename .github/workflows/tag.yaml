@@ -53,6 +53,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Build and publish GC Spark image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.gc-spark
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/versioneer-tech/lakefs-oss-contrib/gc-spark:${{ github.ref_name }}
+            ghcr.io/versioneer-tech/lakefs-oss-contrib/gc-spark:latest
+          labels: |
+            org.opencontainers.image.name=lakefs-oss-contrib-gc-spark
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+
   build_docs:
     name: Build and publish docs
     runs-on: ubuntu-latest

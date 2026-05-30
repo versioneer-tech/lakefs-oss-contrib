@@ -7,7 +7,7 @@ The repository includes a Kind-based e2e script that installs a complete local s
 - operator and auth-server images
 - MinIO as the lakeFS blockstore backend
 - lakeFS with external auth enabled
-- `LakeFSUser`, `LakeFSGroup`, `LakeFSCredential`, `LakeFSRepository`, `LakeFSRole`, and `LakeFSRoleBinding`
+- `LakeFSUser`, `LakeFSGroup`, `LakeFSCredential`, `LakeFSRepository`, `LakeFSGCPolicy`, `LakeFSRole`, and `LakeFSRoleBinding`
 - S3 authorization matrix through the lakeFS gateway
 
 Run it with:
@@ -28,8 +28,8 @@ The default kept cluster uses:
 Kind context: kind-lakefs-oss-contrib-e2e
 lakeFS namespace: lakefs
 CR namespace: lakefs-oss-e2e
-Repositories: repo-a, repo-b, repo-c
-Storage namespaces: s3://e2e-bucket/repo-a, s3://e2e-bucket/repo-b, s3://e2e-bucket/repo-c
+Repositories: repo-a, repo-b, repo-c, repo-gc
+Storage namespaces: s3://e2e-bucket/repo-a, s3://e2e-bucket/repo-b, s3://e2e-bucket/repo-c, s3://e2e-bucket/repo-gc
 Credential Secrets: admin-credentials, user-credentials, readonly-user-credentials
 ```
 
@@ -46,6 +46,27 @@ It creates three repositories:
 - `repo-a`
 - `repo-b`
 - `repo-c`
+
+It also creates a temporary `repo-gc` repository with a custom
+`LakeFSGCPolicy` scheduled every minute. The policy starts suspended while the
+scenario writes uncommitted objects and deletes a subset, then it is resumed so
+the first repository-owned GC `CronJob` run observes a stable fixture. The test
+checks that deleted uncommitted payloads are removed from the MinIO backing
+store while the remaining uncommitted payloads stay readable.
+
+The e2e GC policy sets lakeFS' debug uncommitted-object minimum age to one
+second so the test can exercise cleanup without waiting for the Spark client's
+default 24-hour grace period.
+
+By default, the script uses the published prepared GC Spark image at
+`E2E_GC_SPARK_IMAGE` and loads it into Kind before the GC policy is applied.
+For unreleased image changes, build the local Dockerfile instead:
+
+```bash
+E2E_GC_SPARK_BUILD=true \
+E2E_GC_SPARK_IMAGE=lakefs-oss-contrib/gc-spark:e2e \
+make test-e2e-kind
+```
 
 The role bindings exercise these permissions:
 

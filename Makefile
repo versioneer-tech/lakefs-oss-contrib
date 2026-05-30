@@ -1,6 +1,7 @@
 # Image URLs to use for building/pushing image targets.
 OPERATOR_IMG ?= ghcr.io/versioneer-tech/lakefs-oss-contrib/operator:latest
 AUTHSERVER_IMG ?= ghcr.io/versioneer-tech/lakefs-oss-contrib/auth-server:latest
+GC_SPARK_IMG ?= ghcr.io/versioneer-tech/lakefs-oss-contrib/gc-spark:latest
 # IMG is kept as a backwards-compatible alias for the operator image.
 IMG ?= $(OPERATOR_IMG)
 # YEAR defines the year value used for substituting the YEAR placeholder in the boilerplate header.
@@ -142,10 +143,18 @@ docker-build-operator: ## Build docker image with the operator.
 docker-build-authserver: ## Build docker image with the auth server.
 	$(CONTAINER_TOOL) build --build-arg TARGET=authserver -t ${AUTHSERVER_IMG} .
 
+.PHONY: docker-build-gc-spark
+docker-build-gc-spark: ## Build docker image with the prepared lakeFS GC Spark runtime.
+	$(CONTAINER_TOOL) build -f Dockerfile.gc-spark -t ${GC_SPARK_IMG} .
+
 .PHONY: docker-push
 docker-push: ## Push docker images for the operator and auth server.
 	$(CONTAINER_TOOL) push ${IMG}
 	$(CONTAINER_TOOL) push ${AUTHSERVER_IMG}
+
+.PHONY: docker-push-gc-spark
+docker-push-gc-spark: ## Push docker image with the prepared lakeFS GC Spark runtime.
+	$(CONTAINER_TOOL) push ${GC_SPARK_IMG}
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:

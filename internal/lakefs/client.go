@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -25,6 +26,16 @@ type RepositorySpec struct {
 	StorageNamespace string
 	DefaultBranch    string
 	SampleData       bool
+}
+
+type GCRules struct {
+	DefaultRetentionDays int32    `json:"default_retention_days"`
+	Branches             []GCRule `json:"branches"`
+}
+
+type GCRule struct {
+	BranchID      string `json:"branch_id"`
+	RetentionDays int32  `json:"retention_days"`
 }
 
 func NewClient(endpoint, accessKeyID, secretAccessKey string, httpClient *http.Client) *Client {
@@ -50,6 +61,33 @@ func (c *Client) EnsureRepository(ctx context.Context, repository RepositorySpec
 	return c.createRepository(ctx, repository)
 }
 
+func (c *Client) SetGCRules(ctx context.Context, repository string, rules GCRules) error {
+	body, err := json.Marshal(rules)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.repositoryURL(repository)+"/settings/gc_rules", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	c.authorize(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusNoContent:
+		return nil
+	default:
+		return responseError("lakeFS GC rules update failed", resp)
+	}
+}
+
 func (c *Client) DeleteRepository(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.repositoryURL(name)+"?force=true", nil)
 	if err != nil {
@@ -67,7 +105,7 @@ func (c *Client) DeleteRepository(ctx context.Context, name string) error {
 	case http.StatusNoContent, http.StatusNotFound:
 		return nil
 	default:
-		return fmt.Errorf("lakeFS repository delete failed with HTTP %d", resp.StatusCode)
+		return responseError("lakeFS repository delete failed", resp)
 	}
 }
 
@@ -90,7 +128,7 @@ func (c *Client) repositoryExists(ctx context.Context, name string) (bool, error
 	case http.StatusNotFound:
 		return false, nil
 	default:
-		return false, fmt.Errorf("lakeFS repository lookup failed with HTTP %d", resp.StatusCode)
+		return false, responseError("lakeFS repository lookup failed", resp)
 	}
 }
 
@@ -122,8 +160,17 @@ func (c *Client) createRepository(ctx context.Context, repository RepositorySpec
 	case http.StatusOK, http.StatusCreated, http.StatusConflict:
 		return nil
 	default:
-		return fmt.Errorf("lakeFS repository create failed with HTTP %d", resp.StatusCode)
+		return responseError("lakeFS repository create failed", resp)
 	}
+}
+
+func responseError(message string, resp *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	detail := strings.TrimSpace(string(body))
+	if detail == "" {
+		return fmt.Errorf("%s with HTTP %d", message, resp.StatusCode)
+	}
+	return fmt.Errorf("%s with HTTP %d: %s", message, resp.StatusCode, detail)
 }
 
 func (c *Client) authorize(req *http.Request) {

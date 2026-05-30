@@ -31,11 +31,16 @@ E2E_READONLY_CREDENTIAL_SECRET="${E2E_READONLY_CREDENTIAL_SECRET:-readonly-user-
 E2E_REPO_A="${E2E_REPO_A:-repo-a}"
 E2E_REPO_B="${E2E_REPO_B:-repo-b}"
 E2E_REPO_C="${E2E_REPO_C:-repo-c}"
+E2E_REPO_GC="${E2E_REPO_GC:-repo-gc}"
+E2E_GC_POLICY="${E2E_GC_POLICY:-e2e-gc-fast}"
+E2E_GC_SPARK_IMAGE="${E2E_GC_SPARK_IMAGE:-ghcr.io/versioneer-tech/lakefs-oss-contrib/gc-spark:latest}"
+E2E_GC_SPARK_BUILD="${E2E_GC_SPARK_BUILD:-false}"
 E2E_GROUP_C="${E2E_GROUP_C:-group-c}"
 E2E_S3_BUCKET="${E2E_S3_BUCKET:-e2e-bucket}"
 E2E_STORAGE_NAMESPACE_A="${E2E_STORAGE_NAMESPACE_A:-s3://${E2E_S3_BUCKET}/${E2E_REPO_A}}"
 E2E_STORAGE_NAMESPACE_B="${E2E_STORAGE_NAMESPACE_B:-s3://${E2E_S3_BUCKET}/${E2E_REPO_B}}"
 E2E_STORAGE_NAMESPACE_C="${E2E_STORAGE_NAMESPACE_C:-s3://${E2E_S3_BUCKET}/${E2E_REPO_C}}"
+E2E_STORAGE_NAMESPACE_GC="${E2E_STORAGE_NAMESPACE_GC:-s3://${E2E_S3_BUCKET}/${E2E_REPO_GC}}"
 E2E_S3_SERVICE="${E2E_S3_SERVICE:-lakefs-e2e-minio}"
 E2E_S3_ENDPOINT="${E2E_S3_ENDPOINT:-http://${E2E_S3_SERVICE}.${LAKEFS_NAMESPACE}.svc:9000}"
 E2E_S3_ACCESS_KEY="${E2E_S3_ACCESS_KEY:-lakefs_e2e_minio}"
@@ -70,6 +75,7 @@ Runs the local lakeFS OSS operator e2e smoke test:
   - install lakeFS with stats.enabled=false
   - create three LakeFSUser objects, one LakeFSGroup, credentials, repositories, roles, and role bindings
   - create and delete a timestamped lakeFS repository through LakeFSRepository reconciliation
+  - create a custom LakeFSGCPolicy and verify the managed GC CronJob collects deleted uncommitted objects
   - verify admin, owner, viewer, and group-inherited S3 access through lakeFS
 
 Useful environment variables:
@@ -77,6 +83,8 @@ Useful environment variables:
   REGISTRY=${REGISTRY}
   OPERATOR_IMG=${OPERATOR_IMG}
   AUTHSERVER_IMG=${AUTHSERVER_IMG}
+  E2E_GC_SPARK_IMAGE=${E2E_GC_SPARK_IMAGE}
+  E2E_GC_SPARK_BUILD=${E2E_GC_SPARK_BUILD}
   E2E_CLEANUP=${E2E_CLEANUP}
 EOF
 }
@@ -156,6 +164,18 @@ data:
     host: "${REGISTRY}"
     help: "https://kind.sigs.k8s.io/docs/user/local-registry/"
 EOF
+}
+
+prepare_gc_spark_image() {
+  log "Preparing GC Spark image ${E2E_GC_SPARK_IMAGE}"
+  if [[ "${E2E_GC_SPARK_BUILD}" == "true" ]]; then
+    docker build -f "${ROOT_DIR}/Dockerfile.gc-spark" -t "${E2E_GC_SPARK_IMAGE}" "${ROOT_DIR}"
+  elif ! docker image inspect "${E2E_GC_SPARK_IMAGE}" >/dev/null 2>&1; then
+    docker pull "${E2E_GC_SPARK_IMAGE}"
+  fi
+
+  log "Loading GC Spark image ${E2E_GC_SPARK_IMAGE} into Kind"
+  kind load docker-image "${E2E_GC_SPARK_IMAGE}" --name "${KIND_CLUSTER_NAME}"
 }
 
 ensure_e2e_namespace() {
@@ -252,6 +272,7 @@ EOF
       mc rm --recursive --force e2e/${E2E_S3_BUCKET}/${E2E_REPO_A} || true
       mc rm --recursive --force e2e/${E2E_S3_BUCKET}/${E2E_REPO_B} || true
       mc rm --recursive --force e2e/${E2E_S3_BUCKET}/${E2E_REPO_C} || true
+      mc rm --recursive --force e2e/${E2E_S3_BUCKET}/${E2E_REPO_GC} || true
     "
 }
 
@@ -383,17 +404,38 @@ EOF
     --timeout=240s
 }
 
-apply_e2e_resources() {
-  log "Resetting previous e2e LakeFS resources"
-  kubectl delete \
-    "lakefsrepository/${E2E_REPO_A}" \
-    "lakefsrepository/${E2E_REPO_B}" \
-    "lakefsrepository/${E2E_REPO_C}" \
+delete_lakefs_repository_resource() {
+  local repository_name="$1"
+
+  if kubectl delete "lakefsrepository/${repository_name}" \
     -n "${E2E_NAMESPACE}" \
     --context "${KIND_CONTEXT}" \
     --ignore-not-found=true \
     --wait=true \
-    --timeout=120s
+    --timeout=120s; then
+    return 0
+  fi
+
+  log "Force-clearing stale finalizers for LakeFSRepository/${repository_name}"
+  kubectl patch "lakefsrepository/${repository_name}" \
+    -n "${E2E_NAMESPACE}" \
+    --context "${KIND_CONTEXT}" \
+    --type=merge \
+    -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+
+  kubectl delete "lakefsrepository/${repository_name}" \
+    -n "${E2E_NAMESPACE}" \
+    --context "${KIND_CONTEXT}" \
+    --ignore-not-found=true \
+    --wait=true \
+    --timeout=60s
+}
+
+apply_e2e_resources() {
+  log "Resetting previous e2e LakeFS resources"
+  delete_lakefs_repository_resource "${E2E_REPO_A}"
+  delete_lakefs_repository_resource "${E2E_REPO_B}"
+  delete_lakefs_repository_resource "${E2E_REPO_C}"
   kubectl delete lakefscredential --all \
     -n "${E2E_NAMESPACE}" \
     --context "${KIND_CONTEXT}" \
@@ -814,6 +856,145 @@ lakefs_s3() {
   aws --endpoint-url "http://127.0.0.1:${LAKEFS_PORT}" "$@"
 }
 
+lakefs_object_physical_address() {
+  local repository_name="$1"
+  local object_path="$2"
+  local body_file
+  local status
+  local physical_address
+
+  body_file="$(mktemp)"
+  if ! status="$(lakefs_api_status "GET" "/repositories/${repository_name}/refs/main/objects/stat?path=${object_path}" "${body_file}")"; then
+    echo "lakeFS object stat request failed for ${repository_name}:${object_path}" >&2
+    cat "${body_file}" >&2 || true
+    rm -f "${body_file}"
+    return 1
+  fi
+
+  if [[ "${status}" != "200" ]]; then
+    echo "expected HTTP 200 from object stat for ${repository_name}:${object_path}, got ${status}" >&2
+    cat "${body_file}" >&2 || true
+    rm -f "${body_file}"
+    return 1
+  fi
+
+  physical_address="$(jq -r '.physical_address // empty' "${body_file}")"
+  rm -f "${body_file}"
+  if [[ -z "${physical_address}" ]]; then
+    echo "object stat for ${repository_name}:${object_path} did not include physical_address" >&2
+    return 1
+  fi
+
+  printf '%s' "${physical_address}"
+}
+
+minio_object_exists() {
+  local physical_address="$1"
+  local object_key="${physical_address#s3://}"
+
+  kubectl exec "deployment/${E2E_S3_SERVICE}" \
+    -n "${LAKEFS_NAMESPACE}" \
+    --context "${KIND_CONTEXT}" \
+    -- sh -ec "
+      mc alias set e2e ${E2E_S3_ENDPOINT} ${E2E_S3_ACCESS_KEY} ${E2E_S3_SECRET_KEY} >/dev/null
+      mc stat 'e2e/${object_key}' >/dev/null 2>&1
+    " >/dev/null
+}
+
+wait_minio_object_state() {
+  local label="$1"
+  local physical_address="$2"
+  local expected="$3"
+  local timeout_seconds="${4:-180}"
+  local deadline
+  local exists
+
+  log "${label}"
+  deadline=$((SECONDS + timeout_seconds))
+  while true; do
+    exists="false"
+    if minio_object_exists "${physical_address}"; then
+      exists="true"
+    fi
+
+    if [[ "${exists}" == "${expected}" ]]; then
+      return 0
+    fi
+
+    if (( SECONDS >= deadline )); then
+      echo "expected MinIO object ${physical_address} existence to be ${expected}, got ${exists}" >&2
+      return 1
+    fi
+
+    sleep 5
+  done
+}
+
+latest_gc_job_name() {
+  local repository_name="$1"
+  kubectl get jobs \
+    -n "${E2E_NAMESPACE}" \
+    --context "${KIND_CONTEXT}" \
+    -l "lakefs.versioneer.at/repo-cr=${repository_name}" \
+    --sort-by=.metadata.creationTimestamp \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | tail -n 1
+}
+
+wait_for_gc_job_complete() {
+  local repository_name="$1"
+  local timeout_seconds="${2:-240}"
+  local deadline
+  local job_name
+
+  log "Waiting for managed GC CronJob to run for ${repository_name}"
+  deadline=$((SECONDS + timeout_seconds))
+  while true; do
+    job_name="$(latest_gc_job_name "${repository_name}")"
+    if [[ -n "${job_name}" ]]; then
+      break
+    fi
+
+    if (( SECONDS >= deadline )); then
+      echo "GC CronJob did not create a Job for ${repository_name} within ${timeout_seconds}s" >&2
+      return 1
+    fi
+
+    sleep 5
+  done
+
+  kubectl wait "job/${job_name}" \
+    -n "${E2E_NAMESPACE}" \
+    --for=condition=Complete \
+    --context "${KIND_CONTEXT}" \
+    --timeout="${timeout_seconds}s"
+}
+
+wait_for_gc_cronjob_suspend_state() {
+  local repository_name="$1"
+  local expected="$2"
+  local timeout_seconds="${3:-120}"
+  local deadline
+  local observed
+
+  deadline=$((SECONDS + timeout_seconds))
+  while true; do
+    observed="$(kubectl get "cronjob/${repository_name}-gc" \
+      -n "${E2E_NAMESPACE}" \
+      --context "${KIND_CONTEXT}" \
+      -o jsonpath='{.spec.suspend}')"
+    if [[ "${observed}" == "${expected}" ]]; then
+      return 0
+    fi
+
+    if (( SECONDS >= deadline )); then
+      echo "expected GC CronJob suspend state ${expected}, got ${observed}" >&2
+      return 1
+    fi
+
+    sleep 2
+  done
+}
+
 expect_s3_success() {
   local label="$1"
   shift
@@ -923,16 +1104,44 @@ write_tmp_object() {
 cleanup_lifecycle_repository() {
   local repository_name="$1"
 
-  kubectl delete "lakefsrepository/${repository_name}" \
+  delete_lakefs_repository_resource "${repository_name}" >/dev/null 2>&1 || true
+
+  if use_lakefs_credential "${E2E_ADMIN_CREDENTIAL_SECRET}" >/dev/null 2>&1; then
+    lakefs_api_status "DELETE" "/repositories/${repository_name}?force=true" /dev/null >/dev/null 2>&1 || true
+  fi
+}
+
+cleanup_gc_repository() {
+  delete_lakefs_repository_resource "${E2E_REPO_GC}" >/dev/null 2>&1 || true
+  kubectl delete "lakefsgcpolicy/${E2E_GC_POLICY}" \
     -n "${E2E_NAMESPACE}" \
     --context "${KIND_CONTEXT}" \
     --ignore-not-found=true \
     --wait=true \
     --timeout=120s >/dev/null 2>&1 || true
+  kubectl delete jobs \
+    -n "${E2E_NAMESPACE}" \
+    --context "${KIND_CONTEXT}" \
+    -l "lakefs.versioneer.at/repo-cr=${E2E_REPO_GC}" \
+    --ignore-not-found=true \
+    --wait=true \
+    --timeout=120s >/dev/null 2>&1 || true
 
   if use_lakefs_credential "${E2E_ADMIN_CREDENTIAL_SECRET}" >/dev/null 2>&1; then
-    lakefs_api_status "DELETE" "/repositories/${repository_name}?force=true" /dev/null >/dev/null 2>&1 || true
+    lakefs_api_status "DELETE" "/repositories/${E2E_REPO_GC}?force=true" /dev/null >/dev/null 2>&1 || true
   fi
+
+  kubectl run e2e-clean-gc-storage \
+    --context "${KIND_CONTEXT}" \
+    --namespace "${LAKEFS_NAMESPACE}" \
+    --restart=Never \
+    --rm \
+    -i \
+    --image=minio/mc:RELEASE.2025-08-13T08-35-41Z \
+    --command -- sh -ec "
+      mc alias set e2e ${E2E_S3_ENDPOINT} ${E2E_S3_ACCESS_KEY} ${E2E_S3_SECRET_KEY}
+      mc rm --recursive --force e2e/${E2E_S3_BUCKET}/${E2E_REPO_GC} || true
+    " >/dev/null 2>&1 || true
 }
 
 run_repository_lifecycle_smoke() {
@@ -993,6 +1202,217 @@ EOF
   return "${status}"
 }
 
+run_gc_smoke() {
+  local timestamp
+  local keep_one
+  local keep_two
+  local delete_one
+  local keep_one_file
+  local keep_two_file
+  local delete_one_file
+  local keep_one_physical
+  local keep_two_physical
+  local delete_one_physical
+  local status=0
+
+  timestamp="$(date -u +%Y%m%d%H%M%S)-$$"
+  keep_one="gc_keep_one_${timestamp}"
+  keep_two="gc_keep_two_${timestamp}"
+  delete_one="gc_delete_one_${timestamp}"
+
+  log "Running managed GC smoke for ${E2E_REPO_GC}"
+  cleanup_gc_repository
+
+  kubectl apply --context "${KIND_CONTEXT}" -f - <<EOF || status=$?
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSGCPolicy
+metadata:
+  name: ${E2E_GC_POLICY}
+  namespace: ${E2E_NAMESPACE}
+spec:
+  schedule: "* * * * *"
+  suspend: true
+  retention:
+    defaultRetentionDays: 1
+  job:
+    image: ${E2E_GC_SPARK_IMAGE}
+    successfulJobsHistoryLimit: 1
+    failedJobsHistoryLimit: 1
+    backoffLimit: 0
+    ttlSecondsAfterFinished: 300
+    env:
+    - name: S3_ACCESS_KEY
+      value: ${E2E_S3_ACCESS_KEY}
+    - name: S3_SECRET_KEY
+      value: ${E2E_S3_SECRET_KEY}
+  spark:
+    conf:
+    - name: spark.hadoop.fs.s3a.endpoint
+      value: ${E2E_S3_ENDPOINT}
+    - name: spark.hadoop.fs.s3a.path.style.access
+      value: "true"
+    - name: spark.hadoop.fs.s3a.connection.ssl.enabled
+      value: "false"
+    - name: spark.hadoop.fs.s3a.access.key
+      value: \$(S3_ACCESS_KEY)
+    - name: spark.hadoop.fs.s3a.secret.key
+      value: \$(S3_SECRET_KEY)
+    - name: spark.hadoop.fs.s3a.aws.credentials.provider
+      value: org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider
+    - name: spark.hadoop.fs.s3a.impl
+      value: org.apache.hadoop.fs.s3a.S3AFileSystem
+    - name: spark.hadoop.fs.s3.impl
+      value: org.apache.hadoop.fs.s3a.S3AFileSystem
+    - name: spark.hadoop.lakefs.debug.gc.uncommitted_min_age_seconds
+      value: "1"
+    args:
+    - us-east-1
+---
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSRepository
+metadata:
+  name: ${E2E_REPO_GC}
+  namespace: ${E2E_NAMESPACE}
+spec:
+  endpoint: http://lakefs.${LAKEFS_NAMESPACE}.svc
+  storageNamespace: ${E2E_STORAGE_NAMESPACE_GC}
+  defaultBranch: main
+  credentialsSecretRef:
+    name: ${E2E_ADMIN_CREDENTIAL_SECRET}
+  gc:
+    enabled: true
+    policyRef:
+      name: ${E2E_GC_POLICY}
+EOF
+
+  if [[ "${status}" -eq 0 ]]; then
+    kubectl wait "lakefsgcpolicy/${E2E_GC_POLICY}" \
+      -n "${E2E_NAMESPACE}" \
+      --for=condition=Ready \
+      --context "${KIND_CONTEXT}" \
+      --timeout=120s || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    kubectl wait "lakefsrepository/${E2E_REPO_GC}" \
+      -n "${E2E_NAMESPACE}" \
+      --for=condition=Ready \
+      --context "${KIND_CONTEXT}" \
+      --timeout=180s || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    local schedule
+    local suspend
+    schedule="$(kubectl get "cronjob/${E2E_REPO_GC}-gc" \
+      -n "${E2E_NAMESPACE}" \
+      --context "${KIND_CONTEXT}" \
+      -o jsonpath='{.spec.schedule}')"
+    if [[ "${schedule}" != "* * * * *" ]]; then
+      echo "expected GC CronJob schedule '* * * * *', got '${schedule}'" >&2
+      status=1
+    fi
+    suspend="$(kubectl get "cronjob/${E2E_REPO_GC}-gc" \
+      -n "${E2E_NAMESPACE}" \
+      --context "${KIND_CONTEXT}" \
+      -o jsonpath='{.spec.suspend}')"
+    if [[ "${suspend}" != "true" ]]; then
+      echo "expected GC CronJob to start suspended, got '${suspend}'" >&2
+      status=1
+    fi
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    kubectl delete jobs \
+      -n "${E2E_NAMESPACE}" \
+      --context "${KIND_CONTEXT}" \
+      -l "lakefs.versioneer.at/repo-cr=${E2E_REPO_GC}" \
+      --ignore-not-found=true \
+      --wait=true \
+      --timeout=120s || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    use_lakefs_credential "${E2E_ADMIN_CREDENTIAL_SECRET}" || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    keep_one_file="$(write_tmp_object "${keep_one}")"
+    keep_two_file="$(write_tmp_object "${keep_two}")"
+    delete_one_file="$(write_tmp_object "${delete_one}")"
+
+    expect_s3_success "write uncommitted keep-one object" lakefs_s3 s3 cp "${keep_one_file}" "s3://${E2E_REPO_GC}/main/gc/keep-one.txt" || status=$?
+    expect_s3_success "write uncommitted keep-two object" lakefs_s3 s3 cp "${keep_two_file}" "s3://${E2E_REPO_GC}/main/gc/keep-two.txt" || status=$?
+    expect_s3_success "write uncommitted delete-one object" lakefs_s3 s3 cp "${delete_one_file}" "s3://${E2E_REPO_GC}/main/gc/delete-one.txt" || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    keep_one_physical="$(lakefs_object_physical_address "${E2E_REPO_GC}" "gc/keep-one.txt")" || status=$?
+    keep_two_physical="$(lakefs_object_physical_address "${E2E_REPO_GC}" "gc/keep-two.txt")" || status=$?
+    delete_one_physical="$(lakefs_object_physical_address "${E2E_REPO_GC}" "gc/delete-one.txt")" || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    expect_s3_success "delete one uncommitted object through lakeFS" lakefs_s3 s3 rm "s3://${E2E_REPO_GC}/main/gc/delete-one.txt" || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    wait_minio_object_state "deleted backing object exists before GC" "${delete_one_physical}" "true" 60 || status=$?
+    wait_minio_object_state "kept backing object exists before GC" "${keep_one_physical}" "true" 60 || status=$?
+    wait_minio_object_state "second kept backing object exists before GC" "${keep_two_physical}" "true" 60 || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    kubectl delete jobs \
+      -n "${E2E_NAMESPACE}" \
+      --context "${KIND_CONTEXT}" \
+      -l "lakefs.versioneer.at/repo-cr=${E2E_REPO_GC}" \
+      --ignore-not-found=true \
+      --wait=true \
+      --timeout=120s || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    sleep 2
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    log "Enabling managed GC CronJob for ${E2E_REPO_GC}"
+    kubectl patch "lakefsgcpolicy/${E2E_GC_POLICY}" \
+      -n "${E2E_NAMESPACE}" \
+      --context "${KIND_CONTEXT}" \
+      --type=merge \
+      -p '{"spec":{"suspend":false}}' || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    kubectl wait "lakefsgcpolicy/${E2E_GC_POLICY}" \
+      -n "${E2E_NAMESPACE}" \
+      --for=condition=Ready \
+      --context "${KIND_CONTEXT}" \
+      --timeout=120s || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    wait_for_gc_cronjob_suspend_state "${E2E_REPO_GC}" "false" 120 || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    wait_for_gc_job_complete "${E2E_REPO_GC}" 600 || status=$?
+  fi
+
+  if [[ "${status}" -eq 0 ]]; then
+    wait_minio_object_state "deleted backing object collected by GC" "${delete_one_physical}" "false" 180 || status=$?
+    wait_minio_object_state "kept backing object remains after GC" "${keep_one_physical}" "true" 60 || status=$?
+    wait_minio_object_state "second kept backing object remains after GC" "${keep_two_physical}" "true" 60 || status=$?
+    expect_s3_success "kept uncommitted objects remain readable through lakeFS" lakefs_s3 s3 ls "s3://${E2E_REPO_GC}/main/gc/" || status=$?
+  fi
+
+  rm -f "${keep_one_file:-}" "${keep_two_file:-}" "${delete_one_file:-}"
+  cleanup_gc_repository
+  return "${status}"
+}
+
 run_s3_smoke() {
   log "Running S3 authorization matrix through lakeFS"
 
@@ -1048,6 +1468,11 @@ dump_debug() {
     -n "${LAKEFS_NAMESPACE}" \
     --context "${KIND_CONTEXT}" \
     --tail=120 || true
+  log "GC jobs"
+  kubectl get cronjobs,jobs,pods \
+    -n "${E2E_NAMESPACE}" \
+    --context "${KIND_CONTEXT}" \
+    -l "lakefs.versioneer.at/repo-cr=${E2E_REPO_GC}" || true
 }
 
 main() {
@@ -1063,6 +1488,7 @@ main() {
   require_tool kubectl
   require_tool helm
   require_tool curl
+  require_tool jq
   require_tool aws
 
   cd "${ROOT_DIR}"
@@ -1070,6 +1496,7 @@ main() {
   ensure_registry
   ensure_kind_cluster
   configure_kind_registry
+  prepare_gc_spark_image
   ensure_e2e_namespace
   build_and_push_images
   deploy_operator_stack
@@ -1081,6 +1508,11 @@ main() {
   wait_for_lakefs_port_forward
 
   if ! run_repository_lifecycle_smoke; then
+    dump_debug
+    exit 1
+  fi
+
+  if ! run_gc_smoke; then
     dump_debug
     exit 1
   fi

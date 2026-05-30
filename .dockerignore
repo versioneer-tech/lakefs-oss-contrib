@@ -12,3 +12,4 @@
 
 # Re-include release Dockerfile used by GoReleaser
 !Dockerfile.goreleaser
+!Dockerfile.gc-spark

@@ -13,6 +13,11 @@ nav:
     - Installation: how-to-guides/installation.md
     - Local E2E: how-to-guides/local_e2e.md
   - Reference guides:
+    - Architecture:
+      - Overview: architecture/index.md
+      - ADR-001 Kubernetes-Native Control Plane: architecture/0001-kubernetes-native-lakefs-control-plane.md
+      - ADR-002 Garbage Collection: architecture/0002-garbage-collection-policies-and-cronjobs.md
+      - ADR-003 Versioneer Index Generation: architecture/0003-action-driven-versioneer-index-generation.md
     - API: reference-guides/api.md
 plugins:
   - search

@@ -74,7 +74,17 @@ spec:
   defaultBranch: main
   credentialsSecretRef:
     name: admin-credentials
+  gc:
+    enabled: true
+    policyRef:
+      name: default
 ```
+
+Managed garbage collection is enabled by default. If `spec.gc` is omitted, the
+operator uses `policyRef.name: default`. The operator looks for that
+`LakeFSGCPolicy` in the same namespace as the `LakeFSRepository`, and creates
+the namespace-local `default` policy when a repository first needs it and no
+custom default exists yet.
 
 S3 clients use lakeFS gateway paths in the form:
 
@@ -87,6 +97,51 @@ For example:
 ```bash
 aws --endpoint-url http://127.0.0.1:18000 \
   s3 cp ./data.txt s3://repo-a/main/data/data.txt
+```
+
+## Garbage Collection Policy
+
+A `LakeFSGCPolicy` stores reusable lakeFS retention rules and Kubernetes
+`CronJob` settings for managed lakeFS OSS garbage collection.
+
+```yaml
+apiVersion: pkg.internal/v1beta1
+kind: LakeFSGCPolicy
+metadata:
+  name: default
+  namespace: lakefs
+spec:
+  schedule: "0 3 * * *"
+  retention:
+    defaultRetentionDays: 14
+```
+
+The default image is prepared by this project and already contains a compatible
+Spark runtime, lakeFS Spark client assembly, and S3A dependencies. The default
+`spec.job.image`, `spec.job.command`, `spec.spark.className`, and
+`spec.spark.jarURL` values can be omitted unless a policy needs a custom
+runtime.
+
+Policies may add branch-specific retention, provider-specific Spark
+configuration, extra Spark packages, job environment variables, init
+containers, volumes, and resource settings when the default runtime is not
+enough. When `spec.spark.packages` is set, the operator injects
+`spark.jars.ivy=/tmp/.ivy2` so Spark can resolve packages in a writable
+location inside the GC pod. Custom images must use a lakeFS Spark client
+assembly that matches the selected Spark runtime.
+
+The repository controller applies the selected retention rules to lakeFS and
+creates a repository-owned `CronJob` in the repository namespace. The CronJob
+uses the repository's `credentialsSecretRef` for lakeFS API credentials, so the
+Secret must be in the same namespace as the `LakeFSRepository` when managed GC
+is enabled.
+
+Disable managed GC for a repository with:
+
+```yaml
+spec:
+  gc:
+    enabled: false
 ```
 
 ## Role

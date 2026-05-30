@@ -18,6 +18,9 @@ spec:
     - jsonPath: .status.repository
       name: Repository
       type: string
+    - jsonPath: .status.gcPolicy
+      name: GC Policy
+      type: string
     - jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: Ready
       type: string
@@ -80,6 +83,32 @@ spec:
                 description: endpoint is the lakeFS server base URL, for example http://lakefs.lakefs.svc:8000.
                 minLength: 1
                 type: string
+              gc:
+                default:
+                  enabled: true
+                  policyRef:
+                    name: default
+                description: gc configures managed lakeFS garbage collection for this
+                  repository.
+                properties:
+                  enabled:
+                    default: true
+                    description: enabled controls whether the operator manages lakeFS
+                      GC retention rules and CronJob.
+                    type: boolean
+                  policyRef:
+                    default:
+                      name: default
+                    description: policyRef selects the namespaced GC policy used by
+                      this repository.
+                    properties:
+                      name:
+                        default: default
+                        description: name is the referenced LakeFSGCPolicy.
+                        minLength: 1
+                        type: string
+                    type: object
+                type: object
               repository:
                 description: repository is the lakeFS repository name. Defaults to
                   metadata.name.
@@ -162,6 +191,14 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              gcCronJob:
+                description: gcCronJob is the managed Kubernetes CronJob name when
+                  managed GC is enabled.
+                type: string
+              gcPolicy:
+                description: gcPolicy is the resolved LakeFSGCPolicy name in this
+                  namespace when managed GC is enabled.
+                type: string
               observedGeneration:
                 description: observedGeneration is the most recent generation observed
                   by the controller.

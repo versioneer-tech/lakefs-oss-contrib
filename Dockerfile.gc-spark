@@ -1,0 +1,54 @@
+# syntax=docker/dockerfile:1.7
+# Copyright 2026, Versioneer (https://versioneer.at)
+# SPDX-License-Identifier: Apache-2.0
+
+ARG SPARK_BASE_IMAGE=apache/spark:3.5.5
+
+FROM alpine:3.20 AS deps
+
+ARG LAKEFS_SPARK_CLIENT_VERSION=0.22.0
+ARG LAKEFS_SPARK_CLIENT_SCALA_VERSION=2.12
+ARG HADOOP_AWS_VERSION=3.3.4
+ARG AWS_JAVA_SDK_BUNDLE_VERSION=1.12.262
+ARG WILDFLY_OPENSSL_VERSION=1.0.7.Final
+
+RUN apk add --no-cache ca-certificates curl
+WORKDIR /deps
+RUN curl -fsSLo lakefs-spark-client.jar "https://treeverse-clients-us-east.s3.amazonaws.com/lakefs-spark-client/${LAKEFS_SPARK_CLIENT_VERSION}/lakefs-spark-client_${LAKEFS_SPARK_CLIENT_SCALA_VERSION}-assembly-${LAKEFS_SPARK_CLIENT_VERSION}.jar" \
+    && curl -fsSLo hadoop-aws.jar "https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_AWS_VERSION}/hadoop-aws-${HADOOP_AWS_VERSION}.jar" \
+    && curl -fsSLo aws-java-sdk-bundle.jar "https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_JAVA_SDK_BUNDLE_VERSION}/aws-java-sdk-bundle-${AWS_JAVA_SDK_BUNDLE_VERSION}.jar" \
+    && curl -fsSLo wildfly-openssl.jar "https://repo1.maven.org/maven2/org/wildfly/openssl/wildfly-openssl/${WILDFLY_OPENSSL_VERSION}/wildfly-openssl-${WILDFLY_OPENSSL_VERSION}.jar"
+
+FROM ${SPARK_BASE_IMAGE}
+
+ARG LAKEFS_SPARK_CLIENT_VERSION=0.22.0
+ARG LAKEFS_SPARK_CLIENT_SCALA_VERSION=2.12
+ARG HADOOP_AWS_VERSION=3.3.4
+ARG AWS_JAVA_SDK_BUNDLE_VERSION=1.12.262
+ARG WILDFLY_OPENSSL_VERSION=1.0.7.Final
+
+LABEL org.opencontainers.image.title="lakefs-oss-contrib GC Spark" \
+      org.opencontainers.image.description="Prepared Spark runtime for lakeFS OSS garbage collection" \
+      org.opencontainers.image.source="https://github.com/versioneer-tech/lakefs-oss-contrib" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      lakefs.spark-client.version="${LAKEFS_SPARK_CLIENT_VERSION}" \
+      lakefs.spark-client.scala-version="${LAKEFS_SPARK_CLIENT_SCALA_VERSION}" \
+      hadoop-aws.version="${HADOOP_AWS_VERSION}" \
+      aws-java-sdk-bundle.version="${AWS_JAVA_SDK_BUNDLE_VERSION}" \
+      wildfly-openssl.version="${WILDFLY_OPENSSL_VERSION}"
+
+USER root
+RUN mkdir -p /opt/lakefs-gc \
+    && chmod 755 /opt/lakefs-gc
+
+COPY --from=deps /deps/lakefs-spark-client.jar /opt/lakefs-gc/lakefs-spark-client.jar
+COPY --from=deps /deps/hadoop-aws.jar /opt/spark/jars/hadoop-aws.jar
+COPY --from=deps /deps/aws-java-sdk-bundle.jar /opt/spark/jars/aws-java-sdk-bundle.jar
+COPY --from=deps /deps/wildfly-openssl.jar /opt/spark/jars/wildfly-openssl.jar
+
+RUN chmod 644 /opt/lakefs-gc/lakefs-spark-client.jar \
+    /opt/spark/jars/hadoop-aws.jar \
+    /opt/spark/jars/aws-java-sdk-bundle.jar \
+    /opt/spark/jars/wildfly-openssl.jar
+
+USER spark

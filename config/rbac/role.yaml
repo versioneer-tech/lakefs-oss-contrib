@@ -17,6 +17,18 @@ rules:
   - update
   - watch
 - apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - pkg.internal
   resources:
   - lakefscredentials
@@ -48,6 +60,7 @@ rules:
   - pkg.internal
   resources:
   - lakefscredentials/status
+  - lakefsgcpolicies/status
   - lakefsgroups/status
   - lakefsrepositories/status
   - lakefsrolebindings/status
@@ -57,3 +70,12 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - pkg.internal
+  resources:
+  - lakefsgcpolicies
+  verbs:
+  - create
+  - get
+  - list
+  - watch

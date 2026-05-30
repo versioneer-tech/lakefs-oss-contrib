@@ -3,13 +3,14 @@
 The installation deploys a complete lakeFS OSS stack on Kubernetes:
 
 - the upstream lakeFS server
-- the upstream lakeFS garbage-collection spark-submit job
+- the prepared lakeFS garbage-collection spark-submit image
 - the `lakefs-oss-contrib` operator
 - the `lakefs-oss-contrib` auth server
-- CRDs for `LakeFSUser`, `LakeFSGroup`, `LakeFSCredential`, `LakeFSRepository`, `LakeFSRole`, and `LakeFSRoleBinding`
+- CRDs for `LakeFSUser`, `LakeFSGroup`, `LakeFSCredential`, `LakeFSRepository`, `LakeFSGCPolicy`, `LakeFSRole`, and `LakeFSRoleBinding`
 - RBAC for reconciliation and auth-server reads/writes
 - `admin-user` `LakeFSUser`, `admin-credentials` `LakeFSCredential`, and `admin-user-all` `LakeFSRoleBinding`
 - out-of-the-box `LakeFSRole` objects: `admin`, `owner`, and `viewer`
+- a default `LakeFSGCPolicy` created in a repository namespace when a repository first uses it
 
 For installation, use the reusable [OCI bundle](https://github.com/versioneer-tech/bases/pkgs/container/bases) published from `versioneer-tech/bases`. The `lakefs-oss-contrib` base installs these components in a Kubernetes cluster and configures lakeFS to use the auth server for external authorization.
 

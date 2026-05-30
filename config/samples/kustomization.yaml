@@ -11,4 +11,5 @@ resources:
 - pkg_v1beta1_lakefsrole_owner.yaml
 - pkg_v1beta1_lakefsrole_viewer.yaml
 - pkg_v1beta1_lakefsrolebinding.yaml
+- pkg_v1beta1_lakefsgcpolicy_default.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

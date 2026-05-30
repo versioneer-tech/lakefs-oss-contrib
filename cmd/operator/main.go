@@ -165,6 +165,13 @@ func main() {
 		setupLog.Error(err, "Failed to create controller", "controller", "lakefsrole")
 		os.Exit(1)
 	}
+	if err := (&controller.LakeFSGCPolicyReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "lakefsgcpolicy")
+		os.Exit(1)
+	}
 	if err := (&controller.LakeFSGroupReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),

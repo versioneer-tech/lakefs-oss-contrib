@@ -16,6 +16,7 @@ Kubernetes provides the abstraction for managing users, groups, and credentials.
 - `LakeFSGroup` for groups of lakeFS users.
 - `LakeFSCredential` for access keys and generated or supplied secret keys.
 - `LakeFSRepository` for repository creation through the lakeFS API.
+- `LakeFSGCPolicy` for reusable lakeFS garbage-collection retention and CronJob configuration.
 - `LakeFSRole` for reusable lakeFS policy templates.
 - `LakeFSRoleBinding` for assigning roles to users or groups for a repository, or `*`.
 - An auth server implementing the lakeFS external authorization API from Kubernetes resources.
@@ -24,14 +25,16 @@ The intended contract is simple: Kubernetes resources and Secrets are the source
 
 ## Components
 
-The repository builds two binaries and images:
+The repository builds two binaries plus a prepared GC Spark image:
 
 ```text
 ghcr.io/versioneer-tech/lakefs-oss-contrib/operator
 ghcr.io/versioneer-tech/lakefs-oss-contrib/auth-server
+ghcr.io/versioneer-tech/lakefs-oss-contrib/gc-spark
 ```
 
 The operator reconciles desired lakeFS state from custom resources. The auth server is stateless and can run with multiple replicas; lakeFS calls it for users, credentials, groups, policies, and permissions.
+The GC Spark image provides the default runtime for managed lakeFS OSS garbage-collection CronJobs.
 
 ## Quick Shape
 

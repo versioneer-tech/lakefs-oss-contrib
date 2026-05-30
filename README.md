@@ -8,11 +8,12 @@ For the full project overview and usage guides, read the [documentation](https:/
 
 ## What It Provides
 
-`lakefs-oss-contrib` ships two images:
+`lakefs-oss-contrib` ships three images:
 
 ```text
 ghcr.io/versioneer-tech/lakefs-oss-contrib/operator
 ghcr.io/versioneer-tech/lakefs-oss-contrib/auth-server
+ghcr.io/versioneer-tech/lakefs-oss-contrib/gc-spark
 ```
 
 The operator reconciles these Kubernetes resources:
@@ -21,10 +22,12 @@ The operator reconciles these Kubernetes resources:
 - `LakeFSGroup`: a group of lakeFS users.
 - `LakeFSCredential`: desired access credentials for a user.
 - `LakeFSRepository`: desired lakeFS repositories.
+- `LakeFSGCPolicy`: namespace-local reusable garbage-collection retention and CronJob policy.
 - `LakeFSRole`: lakeFS policy templates.
 - `LakeFSRoleBinding`: grants a role to a user or group for a repository, or `*`.
 
 The auth server implements the lakeFS external authorization API from Kubernetes resources and generated Secrets.
+The GC Spark image is a prepared runtime for managed lakeFS OSS garbage-collection CronJobs.
 
 The normal flow is:
 
@@ -32,10 +35,11 @@ The normal flow is:
 2. Create a `LakeFSCredential` for that user.
 3. The operator creates a Secret with lakeFS S3/API credentials.
 4. Create the `LakeFSRepository` objects.
-5. Create one or more `LakeFSRole` objects.
-6. Create a `LakeFSRoleBinding` for a user or group and repository.
-7. lakeFS calls the auth server for credentials and effective policies.
-8. Clients use the lakeFS S3 gateway with the generated credential.
+5. Optionally customize the namespace-local `LakeFSGCPolicy` selected by each repository.
+6. Create one or more `LakeFSRole` objects.
+7. Create a `LakeFSRoleBinding` for a user or group and repository.
+8. lakeFS calls the auth server for credentials and effective policies.
+9. Clients use the lakeFS S3 gateway with the generated credential.
 
 ## Local Development
 
@@ -94,4 +98,5 @@ aws --endpoint-url http://127.0.0.1:18000 s3 cp ./data.txt s3://repo-a/main/data
 ## License
 
 Apache 2.0 (Apache License Version 2.0, January 2004)
+
 <https://www.apache.org/licenses/LICENSE-2.0>

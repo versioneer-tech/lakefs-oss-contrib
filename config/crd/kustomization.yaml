@@ -11,4 +11,5 @@ resources:
 - bases/pkg.internal_lakefsroles.yaml
 - bases/pkg.internal_lakefsrolebindings.yaml
 - bases/pkg.internal_lakefsrepositories.yaml
+- bases/pkg.internal_lakefsgcpolicies.yaml
 # +kubebuilder:scaffold:crdkustomizeresource

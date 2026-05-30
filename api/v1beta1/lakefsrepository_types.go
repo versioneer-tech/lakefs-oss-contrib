@@ -53,6 +53,11 @@ type LakeFSRepositorySpec struct {
 
 	// credentialsSecretRef points to lakeFS admin credentials used to create the repository.
 	CredentialsSecretRef LakeFSRepositoryCredentialSecretReference `json:"credentialsSecretRef"`
+
+	// gc configures managed lakeFS garbage collection for this repository.
+	// +optional
+	// +kubebuilder:default:={enabled:true,policyRef:{name:default}}
+	GC LakeFSRepositoryGCSpec `json:"gc,omitempty"`
 }
 
 // LakeFSRepositoryStatus defines the observed state of LakeFSRepository.
@@ -65,6 +70,14 @@ type LakeFSRepositoryStatus struct {
 	// +optional
 	Repository string `json:"repository,omitempty"`
 
+	// gcPolicy is the resolved LakeFSGCPolicy name in this namespace when managed GC is enabled.
+	// +optional
+	GCPolicy string `json:"gcPolicy,omitempty"`
+
+	// gcCronJob is the managed Kubernetes CronJob name when managed GC is enabled.
+	// +optional
+	GCCronJob string `json:"gcCronJob,omitempty"`
+
 	// conditions represent the current state of the LakeFSRepository resource.
 	// +listType=map
 	// +listMapKey=type
@@ -76,6 +89,7 @@ type LakeFSRepositoryStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:printcolumn:name="Repository",type=string,JSONPath=".status.repository"
+// +kubebuilder:printcolumn:name="GC Policy",type=string,JSONPath=".status.gcPolicy"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].status"
 
 // LakeFSRepository is the Schema for the lakefsrepositories API
@@ -120,6 +134,17 @@ func (r *LakeFSRepository) DefaultBranchName() string {
 		return r.Spec.DefaultBranch
 	}
 	return "main"
+}
+
+func (r *LakeFSRepository) GCEnabled() bool {
+	return r.Spec.GC.Enabled == nil || *r.Spec.GC.Enabled
+}
+
+func (r *LakeFSRepository) GCPolicyName() string {
+	if r.Spec.GC.PolicyRef.Name != "" {
+		return r.Spec.GC.PolicyRef.Name
+	}
+	return DefaultGCPolicyName
 }
 
 func (r *LakeFSRepository) CredentialsSecretNamespace() string {

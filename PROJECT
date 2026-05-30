@@ -45,4 +45,13 @@ resources:
   kind: LakeFSRole
   path: github.com/versioneer-tech/lakefs-oss-contrib/api/v1beta1
   version: v1beta1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: internal
+  group: pkg
+  kind: LakeFSGCPolicy
+  path: github.com/versioneer-tech/lakefs-oss-contrib/api/v1beta1
+  version: v1beta1
 version: "3"
